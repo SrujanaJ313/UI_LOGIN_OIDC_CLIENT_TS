@@ -3,7 +3,7 @@ import MuiAppBar from "@mui/material/AppBar";
 import { Box, IconButton, Toolbar, Typography, styled } from "@mui/material";
 
 import { AccountCircle } from "@mui/icons-material";
-import Notifications from "../Notifications";
+// import Notifications from "../Notifications";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Menu, MenuItem } from "@mui/material";
 
@@ -67,7 +67,7 @@ const Header = () => {
           <Box
             sx={{ display: { xs: "none", md: "flex" }, alignItems: "center" }}
           >
-            <Notifications />
+            {/* <Notifications /> */}
             <IconButton
               size="large"
               edge="end"
@@ -85,7 +85,7 @@ const Header = () => {
         </Toolbar>
       </AppBar>
 
-      <Menu
+      {/* <Menu
         anchorEl={anchorEl}
         open={Boolean(anchorEl)}
         onClose={handleCloseMenu}
@@ -101,7 +101,7 @@ const Header = () => {
         <MenuItem onClick={handleCloseMenu}>Profile</MenuItem>
         <MenuItem onClick={handleCloseMenu}>Settings</MenuItem>
         <MenuItem onClick={handleLogout}>Logout</MenuItem>
-      </Menu>
+      </Menu> */}
     </>
   );
 };
