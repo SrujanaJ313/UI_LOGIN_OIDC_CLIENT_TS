@@ -5,12 +5,14 @@ import CaseGuageChart from "../CaseGuageChart";
 import { Grid, Paper, Typography } from "@mui/material";
 import CaseStatusCard from "../CaseStatusCard";
 import CaseAlerts from "../CaseAlerts";
-import { toast, ToastContainer } from "react-toastify";
-import 'react-toastify/dist/ReactToastify.css';
+// import { toast, ToastContainer } from "react-toastify";
+// import 'react-toastify/dist/ReactToastify.css';
+import { useSnackbar } from "../../../../context/SnackbarContext";
 
 const DashboardLayout = () => {
+  const showSnackbar = useSnackbar()
   useEffect(() => {
-    toast("Logged in Successfully!");
+    showSnackbar("Logged in Successfully!");
   }, []);
 
   return (
@@ -62,7 +64,8 @@ const DashboardLayout = () => {
         </Grid>
       </Grid>
     </Grid>
-    <ToastContainer />
+    {/* <ToastContainer /> */}
+    {/* {showSnackbar("Logged in Successfully!",5000)} */}
     </>
   );
 };

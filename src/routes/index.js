@@ -1,14 +1,15 @@
 import { Navigate, Route, Routes, Outlet } from "react-router-dom";
 // import MSLReferenceList from "../pages/mslReferenceList";
-import ClaimantList from "../pages/claimantList";
+// import ClaimantList from "../pages/claimantList";
 import LoginPage from "../pages/auth/LoginPage"
 import Register from "../pages/auth/Register";
+import WelcomePage from "../pages/welcomePage";
 import Verification from "../pages/auth/Verification";
 // import { useEffect, useState } from 'react';
 // import Header from '../components/Header';
 import ForgotPwd from "../pages/auth/ForgotPwd";
 // import useAuthRouteCheck from "../hooks/useAuthRouteCheck";
-import MainLayout from "../pages/MainLayout";
+// import MainLayout from "../pages/MainLayout";
 import CreatePassword from "../pages/auth/CreatePassword";
 
 function PrivateRoute() {
@@ -27,9 +28,7 @@ function AppRoutes() {
             {/* {showHeader && <Header />} */}
             <Routes>
                 <Route element={<PrivateRoute />}>
-                    {/* <Route element={<MSLReferenceList />} path="/msl-reference-list" /> */}
-                    <Route element={<MainLayout />} path="/msl-reference-list" />
-                    <Route element={<ClaimantList />} path="/claimant-list" />
+                    <Route element={<WelcomePage />} path="/msl-reference-list" />
                 </Route>
                 <Route element={<Navigate replace to={isLoggedin ? "/msl-reference-list" : "/login"} />} path="*" />
                 <Route element={<LoginPage />} path="/login" />
