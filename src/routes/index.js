@@ -28,9 +28,9 @@ function AppRoutes() {
             {/* {showHeader && <Header />} */}
             <Routes>
                 <Route element={<PrivateRoute />}>
-                    <Route element={<WelcomePage />} path="/msl-reference-list" />
+                    <Route element={<WelcomePage />} path="/homePage" />
                 </Route>
-                <Route element={<Navigate replace to={isLoggedin ? "/msl-reference-list" : "/login"} />} path="*" />
+                <Route element={<Navigate replace to={isLoggedin ? "/homePage" : "/login"} />} path="*" />
                 <Route element={<LoginPage />} path="/login" />
                 <Route element={<Register />} path="/register" />
                 <Route element={<Verification />} path="/verification" />

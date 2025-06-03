@@ -47,7 +47,7 @@ export default function LoginPage() {
           password: values.password,
         })
       );
-      navigate("/msl-reference-list");
+      navigate("/homePage");
     },
   });
 
