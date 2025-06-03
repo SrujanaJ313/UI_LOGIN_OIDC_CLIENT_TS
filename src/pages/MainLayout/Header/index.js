@@ -85,7 +85,7 @@ const Header = () => {
         </Toolbar>
       </AppBar>
 
-      {/* <Menu
+      <Menu
         anchorEl={anchorEl}
         open={Boolean(anchorEl)}
         onClose={handleCloseMenu}
@@ -93,15 +93,15 @@ const Header = () => {
           vertical: "bottom",
           horizontal: "left",
         }}
-        // transformOrigin={{
-        //     vertical: 'top',
-        //     horizontal: 'right',
-        // }}
+        transformOrigin={{
+            vertical: 'top',
+            horizontal: 'right',
+        }}
       >
         <MenuItem onClick={handleCloseMenu}>Profile</MenuItem>
         <MenuItem onClick={handleCloseMenu}>Settings</MenuItem>
         <MenuItem onClick={handleLogout}>Logout</MenuItem>
-      </Menu> */}
+      </Menu>
     </>
   );
 };
