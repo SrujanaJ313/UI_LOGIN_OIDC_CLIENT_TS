@@ -288,9 +288,7 @@ export default function Register() {
                     }}
                   />
                   {formik.touched.dateOfBirth && formik.errors.dateOfBirth && (
-                    <FormHelperText>
-                      {formik.errors.dateOfBirth}
-                    </FormHelperText>
+                    <FormHelperText>{formik.errors.dateOfBirth}</FormHelperText>
                   )}
                 </FormControl>
               </LocalizationProvider>

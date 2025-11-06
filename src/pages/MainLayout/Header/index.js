@@ -6,7 +6,7 @@ import { AccountCircle } from "@mui/icons-material";
 // import Notifications from "../Notifications";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Menu, MenuItem } from "@mui/material";
-
+import { useAuth } from "react-oidc-context";
 const AppBar = styled(MuiAppBar, {
   shouldForwardProp: (prop) => prop !== "open",
 })(({ theme, open }) => ({
@@ -26,6 +26,7 @@ const AppBar = styled(MuiAppBar, {
 }));
 
 const Header = () => {
+  const auth = useAuth();
   const [anchorEl, setAnchorEl] = useState(null);
   const location = useLocation();
   const navigate = useNavigate();
@@ -37,12 +38,37 @@ const Header = () => {
     setAnchorEl(null);
   };
 
-  const handleLogout = () => {
+  // const handleLogout = () => {
+  //   setAnchorEl(null);
+  //   if (!location?.state?.remember) {
+  //     localStorage.removeItem("user");
+  //   }
+  //   navigate("/login");
+  // };
+
+  const handleLogout = async () => {
+    // const auth = useAuth();
+
     setAnchorEl(null);
-    if (!location?.state?.remember) {
-      localStorage.removeItem("user");
+
+    try {
+      console.log("🔓 Initiating logout...");
+
+      // Remove user from OIDC
+      await auth.removeUser();
+
+      console.log("✓ User removed from OIDC");
+
+      // Use signoutRedirect instead of manual redirect
+      // This properly handles the logout flow
+      await auth.signoutRedirect({
+        id_token_hint: auth.user?.id_token,
+      });
+
+      console.log("✓ Logout redirect called");
+    } catch (error) {
+      console.error("❌ Logout error:", error);
     }
-    navigate("/login");
   };
 
   return (
@@ -94,8 +120,8 @@ const Header = () => {
           horizontal: "left",
         }}
         transformOrigin={{
-            vertical: 'top',
-            horizontal: 'right',
+          vertical: "top",
+          horizontal: "right",
         }}
       >
         <MenuItem onClick={handleCloseMenu}>Profile</MenuItem>
