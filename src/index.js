@@ -1,54 +1,57 @@
-// src/index.jsx
 import React from "react";
-import ReactDOM from "react-dom/client";
+// import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
-import { AuthProvider } from "react-oidc-context";
-import { WebStorageStateStore } from "oidc-client-ts";
 import App from "./App";
+import { httpClient, setAxiosInterceptors } from "./lib/httpClient";
+import authService from "./lib/authService";
+// import RequireAuth from "./lib/authUser";
+import ReactDOM from "react-dom/client";
+// import { AuthProvider } from "react-oidc-context";
+// import { WebStorageStateStore } from "oidc-client-ts";
 import "./index.css";
 
-console.log("=== OIDC CONFIG ===");
-console.log("Authority:", process.env.REACT_APP_AUTHORITY);
-console.log("Client ID:", process.env.REACT_APP_CLIENT_ID);
-console.log("Redirect URI:", process.env.REACT_APP_REDIRECT_URI);
-console.log("==================");
+// const renderApp = () => {
+//   const container = document.getElementById("root");
+//   const root = createRoot(container);
+//   root.render(
+//     <BrowserRouter>
+//       <RequireAuth>
+//         <App />
+//       </RequireAuth>
+//     </BrowserRouter>
+//   );
+// };
 
-const oidcConfig = {
-  authority: process.env.REACT_APP_AUTHORITY,
-  client_id: process.env.REACT_APP_CLIENT_ID,
-  redirect_uri: process.env.REACT_APP_REDIRECT_URI,
-  scope: process.env.REACT_APP_SCOPE || "openid profile email",
+const container = document.getElementById("root");
+const root = ReactDOM.createRoot(container);
 
-  response_type: "code",
-  userStore: new WebStorageStateStore({
-    store: window.localStorage,
-  }),
-
-  onSigninCallback: (user) => {
-    console.log("✓ Keycloak Login Successful!", user);
-    window.history.replaceState({}, document.title, window.location.pathname);
-  },
-
-  // Called after successful logout
-  onSignoutCallback: () => {
-    console.log("✓ Keycloak Logout Successful!");
-    // Clean up URL after logout
-    window.history.replaceState({}, document.title, window.location.pathname);
-  },
-
-  automaticSilentRenew: true,
-  loadUserInfo: true,
-  monitorSession: true,
-};
-
-const root = ReactDOM.createRoot(document.getElementById("root"));
-
-root.render(
-  <React.StrictMode>
-    <BrowserRouter>
-      <AuthProvider {...oidcConfig}>
+const renderApp = () =>
+  root.render(
+    <React.StrictMode>
+      <BrowserRouter>
         <App />
-      </AuthProvider>
-    </BrowserRouter>
-  </React.StrictMode>
-);
+      </BrowserRouter>
+    </React.StrictMode>
+  );
+
+httpClient
+  .get("/configs.json", { skipAuth: true })
+  .then((response) => {
+    console.log("[Boot] Loaded configs.json:", response);
+
+    // response is already response.data due to the interceptor
+    window.globalAppConfig = response;
+    console.log(
+      "[Boot] Initializing ForgeRock with path:",
+      window.globalAppConfig && window.globalAppConfig.FORGEROCK_PATH
+    );
+    authService.initForgeRock(
+      window.globalAppConfig && window.globalAppConfig.FORGEROCK_PATH,
+      renderApp
+    );
+
+    setAxiosInterceptors();
+  })
+  .catch((err) => {
+    console.error("[Boot] Failed to load configs.json:", err);
+  });

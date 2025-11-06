@@ -1,0 +1,16 @@
+{
+  "authority": "https://wfcssodev1.nhes.nh.gov/sso/oauth2/realms/root/realms/wfcnhes",
+  "client_id": "reactClientPKCE",
+  "redirect_uri": "http://localhost:3000/callback",
+  "response_type": "code",
+  "scope": "openid profile email",
+  "automaticSilentRenew": true,
+  "loadUserInfo": true,
+  "realm": "wfcnhes",
+  "auth-server-url": "https://wfcssodev1.nhes.nh.gov/sso/",
+  "ssl-required": "external",
+  "resource": "reactClientPKCE",
+  "public-client": true,
+  "confidential-port": 0,
+  "enable-cors": true
+}

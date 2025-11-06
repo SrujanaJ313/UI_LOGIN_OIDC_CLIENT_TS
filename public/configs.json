@@ -1,0 +1,5 @@
+{
+  "FORGEROCK_PATH": "/forgeRock.json",
+  "API_BASE_URL": "/api",
+  "FORGEROCK_OIDC_ISSUER": "https://your-forgerock-issuer.example.com"
+}
