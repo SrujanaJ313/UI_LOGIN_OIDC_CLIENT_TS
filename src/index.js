@@ -1,14 +1,11 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import { Config } from "@forgerock/javascript-sdk";
+import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import "./index.css";
-import { SDK_CONFIG } from "./forgerock-config";
-import { BrowserRouter } from "react-router-dom";
 
-// Initialize ForgeRock SDK configuration BEFORE rendering the app
-// This must be called before any other SDK method
-Config.set(SDK_CONFIG);
+// Note: ForgeRock SDK configuration is now initialized in AuthContext.js
+// This ensures the configuration is set before any SDK methods are called
 
 const root = ReactDOM.createRoot(document.getElementById("root"));
 root.render(

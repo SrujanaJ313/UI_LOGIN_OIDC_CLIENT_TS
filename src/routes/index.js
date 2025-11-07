@@ -1,7 +1,5 @@
 // src/routes/AppRoutes.jsx
-import { Navigate, Route, Routes, Outlet } from "react-router-dom";
-import { useAuth } from "react-oidc-context";
-import LoadingSpinner from "../components/LoadingSpinner";
+import { Navigate, Route, Routes } from "react-router-dom";
 
 // Import your pages
 import LoginPage from "../pages/auth/LoginPage";
@@ -10,11 +8,10 @@ import WelcomePage from "../pages/welcomePage";
 import Verification from "../pages/auth/Verification";
 import ForgotPwd from "../pages/auth/ForgotPwd";
 import CreatePassword from "../pages/auth/CreatePassword";
+import Callback from "../pages/auth/Callback";
 import ProtectedRoute from "../components/ProtectedRoute";
 
 function AppRoutes() {
-  const auth = useAuth();
-
   return (
     <Routes>
       {/* ======== PUBLIC ROUTES ======== */}
@@ -23,9 +20,9 @@ function AppRoutes() {
       <Route path="/verification" element={<Verification />} />
       <Route path="/forgot-password" element={<ForgotPwd />} />
       <Route path="/reset-password" element={<CreatePassword />} /> */}
-      <Route path="/login" element={<Login />} />
+      <Route path="/login" element={<LoginPage />} />
       <Route path="/callback" element={<Callback />} />
-      <Route path="/logout" element={<Logout />} />
+      {/* <Route path="/logout" element={<Logout />} /> */}
 
       {/* ======== PROTECTED ROUTES ======== */}
       <Route element={<ProtectedRoute />}>
