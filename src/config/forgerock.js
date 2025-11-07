@@ -63,20 +63,27 @@ export const forgerockConfig = {
      * - NOTE: This matches the auth-server-url from organization config
      */
     baseUrl: "https://wfcssodev1.nhes.nh.gov/sso",
+
+    /**
+     * Timeout (OPTIONAL)
+     * - Request timeout in milliseconds for ForgeRock server requests
+     * - Organization Value: 30000 (30 seconds)
+     * - Default: SDK default timeout
+     */
+    timeout: 30000,
   },
 
   /**
    * Realm Path (REQUIRED FROM SERVER)
    * - The ForgeRock realm path where your OAuth2 client is configured
    * - Realms are used to organize and isolate authentication configurations
-   * - Format: "/realms/root/realms/[realm-name]" or "/realms/[realm-name]"
-   * - Default realm is typically "/realms/root" or "/"
-   * - Organization Value: "/realms/root/realms/wfcnhes"
+   * - For nested realms under root, use just the realm name (SDK adds /realms/root/realms/ automatically)
    * - Organization Realm Name: "wfcnhes"
+   * - Full path in URL: /realms/root/realms/wfcnhes (constructed by SDK)
    * - Server Location: ForgeRock AM Console > Realms > [Your Realm] > Name
-   * - NOTE: The realm path must match where your client is registered
+   * - NOTE: The SDK automatically prefixes with /realms/root/realms/, so we only need the realm name
    */
-  realmPath: "/realms/root/realms/wfcnhes",
+  realmPath: "wfcnhes",
 
   /**
    * Authentication Tree/Journey (OPTIONAL - FROM SERVER)
@@ -97,15 +104,27 @@ export const forgerockConfig = {
  * Full OIDC Authority URL: https://wfcssodev1.nhes.nh.gov/sso/oauth2/realms/root/realms/wfcnhes
  * - This is the complete OIDC issuer URL (baseUrl + /oauth2 + realmPath)
  *
- * Response Type: "code" (OAuth2 Authorization Code flow with PKCE)
- * - This is the standard response type for PKCE flow
+ * OIDC Client Configuration (from organization):
+ * - authority: "https://wfcssodev1.nhes.nh.gov/sso/oauth2/realms/root/realms/wfcnhes"
+ * - client_id: "reactClientPKCE"
+ * - redirect_uri: "http://localhost:3000/callback"
+ * - response_type: "code" (OAuth2 Authorization Code flow with PKCE)
+ * - scope: "openid profile email"
+ * - automaticSilentRenew: true (automatically renew tokens in background)
+ * - loadUserInfo: true (automatically load user information after authentication)
  *
- * Server Configuration:
- * - Realm: "wfcnhes"
- * - Auth Server URL: "https://wfcssodev1.nhes.nh.gov/sso/"
- * - Public Client: true (PKCE client, no client secret required)
- * - CORS: Enabled (allows cross-origin requests)
- * - SSL Required: External (HTTPS required for external access)
+ * Server Configuration (from organization):
+ * - realm: "wfcnhes"
+ * - auth-server-url: "https://wfcssodev1.nhes.nh.gov/sso/"
+ * - ssl-required: "external" (HTTPS required for external access)
+ * - resource: "reactClientPKCE" (matches clientId)
+ * - public-client: true (PKCE client, no client secret required)
+ * - confidential-port: 0
+ * - enable-cors: true (allows cross-origin requests)
+ *
+ * NOTE: The ForgeRock JavaScript SDK handles automaticSilentRenew and loadUserInfo
+ * automatically through its TokenManager and UserManager classes. These settings are
+ * documented here for reference but are managed by the SDK internally.
  */
 
 // Log configuration when module is loaded (for debugging)
@@ -115,11 +134,15 @@ console.log("[ForgeRock Config] Configuration loaded:", {
   scope: forgerockConfig.scope,
   baseUrl: forgerockConfig.serverConfig?.baseUrl,
   realmPath: forgerockConfig.realmPath,
+  timeout: forgerockConfig.serverConfig?.timeout,
   hasTree: !!forgerockConfig.tree,
-  oidcAuthority: `${forgerockConfig.serverConfig?.baseUrl}/oauth2${forgerockConfig.realmPath}`,
+  oidcAuthority: `${forgerockConfig.serverConfig?.baseUrl}/oauth2/realms/root/realms/${forgerockConfig.realmPath}`,
   realm: "wfcnhes",
   publicClient: true,
   corsEnabled: true,
+  responseType: "code",
+  automaticSilentRenew: "handled by SDK",
+  loadUserInfo: "handled by SDK",
 });
 
 export default forgerockConfig;

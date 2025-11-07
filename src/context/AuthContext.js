@@ -109,14 +109,32 @@ export const AuthProvider = ({ children }) => {
         console.log("[ForgeRock Auth] SDK configuration set successfully");
 
         // Check if we're returning from OAuth callback
-        const urlParams = new URLSearchParams(window.location.search);
-        const code = urlParams.get("code");
-        const state = urlParams.get("state");
+        let urlParams;
+        let code, state;
+        let currentPath = "unknown";
+        
+        try {
+          urlParams = new URLSearchParams(window.location.search);
+          code = urlParams.get("code");
+          state = urlParams.get("state");
+          currentPath = window.location.pathname || "unknown";
+        } catch (error) {
+          console.warn("[ForgeRock Auth] Could not access location properties (cross-origin):", error.message);
+          // Try to get search params from document if available
+          try {
+            const search = window.location?.search || document.location?.search || "";
+            urlParams = new URLSearchParams(search);
+            code = urlParams.get("code");
+            state = urlParams.get("state");
+          } catch (e) {
+            console.warn("[ForgeRock Auth] Could not parse URL parameters");
+          }
+        }
 
         console.log("[ForgeRock Auth] URL parameters:", {
           hasCode: !!code,
           hasState: !!state,
-          currentPath: window.location.pathname,
+          currentPath: currentPath,
         });
 
         if (code && state) {
@@ -128,12 +146,17 @@ export const AuthProvider = ({ children }) => {
               console.log("[ForgeRock Auth] Tokens received successfully from OAuth callback");
               await loadUserInfo();
               // Clean up URL
-              window.history.replaceState(
-                {},
-                document.title,
-                window.location.pathname
-              );
-              console.log("[ForgeRock Auth] URL cleaned up after successful authentication");
+              try {
+                const pathname = window.location?.pathname || "/";
+                window.history.replaceState(
+                  {},
+                  document.title,
+                  pathname
+                );
+                console.log("[ForgeRock Auth] URL cleaned up after successful authentication");
+              } catch (error) {
+                console.warn("[ForgeRock Auth] Could not clean up URL (cross-origin):", error.message);
+              }
             } else {
               console.warn("[ForgeRock Auth] No access token in OAuth callback response");
             }

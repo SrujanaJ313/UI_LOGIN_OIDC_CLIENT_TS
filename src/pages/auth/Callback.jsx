@@ -3,6 +3,36 @@ import { useNavigate } from "react-router-dom";
 import { OAuth2Client } from "@forgerock/javascript-sdk";
 import { useAuth } from "../../context/AuthContext";
 
+// Safe helper function to get location info without cross-origin errors
+const getSafeLocationInfo = () => {
+  try {
+    return {
+      href: window.location.href,
+      pathname: window.location.pathname,
+      search: window.location.search,
+      hash: window.location.hash,
+    };
+  } catch (error) {
+    // Cross-origin access blocked, use safe alternatives
+    try {
+      return {
+        href: `${window.location.pathname}${window.location.search}${window.location.hash}`,
+        pathname: window.location.pathname,
+        search: window.location.search,
+        hash: window.location.hash,
+      };
+    } catch (e) {
+      // Last resort - return minimal info
+      return {
+        href: "cross-origin-blocked",
+        pathname: window.location?.pathname || "unknown",
+        search: window.location?.search || "",
+        hash: window.location?.hash || "",
+      };
+    }
+  }
+};
+
 const Callback = () => {
   const navigate = useNavigate();
   const { checkAuthentication } = useAuth();
@@ -16,11 +46,14 @@ const Callback = () => {
         const state = urlParams.get("state");
         const from = urlParams.get("from");
         
+        const locationInfo = getSafeLocationInfo();
         console.log("[ForgeRock Callback] Callback parameters:", {
           hasCode: !!code,
           hasState: !!state,
           redirectFrom: from || "default",
-          currentUrl: window.location.href,
+          currentUrl: locationInfo.href,
+          pathname: locationInfo.pathname,
+          search: locationInfo.search,
         });
 
         // Exchange authorization code for tokens
@@ -48,11 +81,14 @@ const Callback = () => {
           navigate("/login", { replace: true });
         }
       } catch (error) {
+        const locationInfo = getSafeLocationInfo();
         console.error("[ForgeRock Callback] Callback error:", error);
         console.error("[ForgeRock Callback] Error details:", {
           message: error.message,
           stack: error.stack,
-          url: window.location.href,
+          url: locationInfo.href,
+          pathname: locationInfo.pathname,
+          search: locationInfo.search,
         });
         console.log("[ForgeRock Callback] Redirecting to login due to error");
         navigate("/login", { replace: true });
