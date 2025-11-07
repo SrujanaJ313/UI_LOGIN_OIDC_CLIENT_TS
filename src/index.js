@@ -1,57 +1,20 @@
 import React from "react";
-// import { createRoot } from "react-dom/client";
-import { BrowserRouter } from "react-router-dom";
-import App from "./App";
-import { httpClient, setAxiosInterceptors } from "./lib/httpClient";
-import authService from "./lib/authService";
-// import RequireAuth from "./lib/authUser";
 import ReactDOM from "react-dom/client";
-// import { AuthProvider } from "react-oidc-context";
-// import { WebStorageStateStore } from "oidc-client-ts";
+import { Config } from "@forgerock/javascript-sdk";
+import App from "./App";
 import "./index.css";
+import { SDK_CONFIG } from "./forgerock-config";
+import { BrowserRouter } from "react-router-dom";
 
-// const renderApp = () => {
-//   const container = document.getElementById("root");
-//   const root = createRoot(container);
-//   root.render(
-//     <BrowserRouter>
-//       <RequireAuth>
-//         <App />
-//       </RequireAuth>
-//     </BrowserRouter>
-//   );
-// };
+// Initialize ForgeRock SDK configuration BEFORE rendering the app
+// This must be called before any other SDK method
+Config.set(SDK_CONFIG);
 
-const container = document.getElementById("root");
-const root = ReactDOM.createRoot(container);
-
-const renderApp = () =>
-  root.render(
-    <React.StrictMode>
-      <BrowserRouter>
-        <App />
-      </BrowserRouter>
-    </React.StrictMode>
-  );
-
-httpClient
-  .get("/configs.json", { skipAuth: true })
-  .then((response) => {
-    console.log("[Boot] Loaded configs.json:", response);
-
-    // response is already response.data due to the interceptor
-    window.globalAppConfig = response;
-    console.log(
-      "[Boot] Initializing ForgeRock with path:",
-      window.globalAppConfig && window.globalAppConfig.FORGEROCK_PATH
-    );
-    authService.initForgeRock(
-      window.globalAppConfig && window.globalAppConfig.FORGEROCK_PATH,
-      renderApp
-    );
-
-    setAxiosInterceptors();
-  })
-  .catch((err) => {
-    console.error("[Boot] Failed to load configs.json:", err);
-  });
+const root = ReactDOM.createRoot(document.getElementById("root"));
+root.render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
+  </React.StrictMode>
+);

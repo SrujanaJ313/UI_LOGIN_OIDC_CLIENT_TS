@@ -18,11 +18,14 @@ function AppRoutes() {
   return (
     <Routes>
       {/* ======== PUBLIC ROUTES ======== */}
-      <Route path="/login" element={<LoginPage />} />
+      {/* <Route path="/login" element={<LoginPage />} />
       <Route path="/register" element={<Register />} />
       <Route path="/verification" element={<Verification />} />
       <Route path="/forgot-password" element={<ForgotPwd />} />
-      <Route path="/reset-password" element={<CreatePassword />} />
+      <Route path="/reset-password" element={<CreatePassword />} /> */}
+      <Route path="/login" element={<Login />} />
+      <Route path="/callback" element={<Callback />} />
+      <Route path="/logout" element={<Logout />} />
 
       {/* ======== PROTECTED ROUTES ======== */}
       <Route element={<ProtectedRoute />}>
