@@ -13,9 +13,12 @@ import { Captcha } from "../../components/captcha";
 import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import InputAdornment from "@mui/material/InputAdornment";
 import LockIcon from "@mui/icons-material/Lock";
+import { useAuth } from "../../context/AuthContext";
+import { providerName } from "../../config/forgerock";
 
 export default function LoginPage() {
   const navigate = useNavigate();
+  const { login, isLoading } = useAuth();
   const user =
     localStorage.getItem("user") && JSON.parse(localStorage.getItem("user"));
   const [captcha, setCaptcha] = useState(() =>
@@ -133,8 +136,9 @@ export default function LoginPage() {
               fontSize: "1.2rem",
               borderRadius: "30px",
             }}
+            disabled={isLoading}
           >
-            Log In
+            {isLoading ? "Logging in..." : "Log In"}
           </Button>
         </form>
 
@@ -176,9 +180,29 @@ export default function LoginPage() {
 
         <Button
           fullWidth
-          variant="contained"
+          variant="outlined"
           sx={{
             mt: 3,
+            mb: 2,
+            borderRadius: "30px",
+            textTransform: "none",
+            fontSize: "1.2rem",
+          }}
+          size="small"
+          onClick={async () => {
+            console.log(`[LoginPage] Initiating ${providerName} OAuth login...`);
+            await login();
+          }}
+          disabled={isLoading}
+        >
+          {isLoading ? "Redirecting..." : `Sign in with ${providerName}`}
+        </Button>
+
+        <Button
+          fullWidth
+          variant="contained"
+          sx={{
+            mt: 1,
             mb: 2,
             borderRadius: "30px",
             textTransform: "none",

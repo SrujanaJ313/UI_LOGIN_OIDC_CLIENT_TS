@@ -4,9 +4,8 @@ import { Box, IconButton, Toolbar, Typography, styled } from "@mui/material";
 
 import { AccountCircle } from "@mui/icons-material";
 // import Notifications from "../Notifications";
-import { useLocation, useNavigate } from "react-router-dom";
 import { Menu, MenuItem } from "@mui/material";
-import { useAuth } from "react-oidc-context";
+import { useAuth } from "../../../context/AuthContext";
 const AppBar = styled(MuiAppBar, {
   shouldForwardProp: (prop) => prop !== "open",
 })(({ theme, open }) => ({
@@ -26,10 +25,8 @@ const AppBar = styled(MuiAppBar, {
 }));
 
 const Header = () => {
-  const auth = useAuth();
+  const { user, logout } = useAuth();
   const [anchorEl, setAnchorEl] = useState(null);
-  const location = useLocation();
-  const navigate = useNavigate();
   const handleOpenMenu = (event) => {
     setAnchorEl(event.currentTarget);
   };
@@ -38,34 +35,14 @@ const Header = () => {
     setAnchorEl(null);
   };
 
-  // const handleLogout = () => {
-  //   setAnchorEl(null);
-  //   if (!location?.state?.remember) {
-  //     localStorage.removeItem("user");
-  //   }
-  //   navigate("/login");
-  // };
-
   const handleLogout = async () => {
-    // const auth = useAuth();
-
     setAnchorEl(null);
 
     try {
       console.log("🔓 Initiating logout...");
-
-      // Remove user from OIDC
-      await auth.removeUser();
-
-      console.log("✓ User removed from OIDC");
-
-      // Use signoutRedirect instead of manual redirect
-      // This properly handles the logout flow
-      await auth.signoutRedirect({
-        id_token_hint: auth.user?.id_token,
-      });
-
-      console.log("✓ Logout redirect called");
+      // Use the logout function from AuthContext
+      await logout();
+      console.log("✓ Logout successful");
     } catch (error) {
       console.error("❌ Logout error:", error);
     }
@@ -105,7 +82,7 @@ const Header = () => {
               <AccountCircle />
             </IconButton>
             <span className="pl-2 text-white font-medium">
-              Welcome, Srujana
+              Welcome, {user?.name || user?.email || "User"}
             </span>
           </Box>
         </Toolbar>

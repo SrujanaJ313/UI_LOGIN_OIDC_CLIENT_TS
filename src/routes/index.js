@@ -3,13 +3,14 @@ import { Navigate, Route, Routes } from "react-router-dom";
 
 // Import your pages
 import LoginPage from "../pages/auth/LoginPage";
-import Register from "../pages/auth/Register";
 import WelcomePage from "../pages/welcomePage";
-import Verification from "../pages/auth/Verification";
-import ForgotPwd from "../pages/auth/ForgotPwd";
-import CreatePassword from "../pages/auth/CreatePassword";
 import Callback from "../pages/auth/Callback";
 import ProtectedRoute from "../components/ProtectedRoute";
+// Unused imports (commented out routes):
+// import Register from "../pages/auth/Register";
+// import Verification from "../pages/auth/Verification";
+// import ForgotPwd from "../pages/auth/ForgotPwd";
+// import CreatePassword from "../pages/auth/CreatePassword";
 
 function AppRoutes() {
   return (

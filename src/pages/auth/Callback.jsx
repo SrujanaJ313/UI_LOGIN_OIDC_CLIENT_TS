@@ -89,7 +89,39 @@ const Callback = () => {
           url: locationInfo.href,
           pathname: locationInfo.pathname,
           search: locationInfo.search,
+          errorType: error.constructor?.name,
+          response: error.response,
+          status: error.status,
+          statusText: error.statusText,
         });
+        
+        // Check for specific error types
+        if (error.message?.includes("redirect_uri_mismatch")) {
+          console.error(
+            "[ForgeRock Callback] REDIRECT URI MISMATCH - The redirect URI in your config must match exactly what's registered in the OAuth provider"
+          );
+        }
+        if (error.message?.includes("invalid_client")) {
+          console.error(
+            "[ForgeRock Callback] INVALID CLIENT - The client ID may be incorrect or not registered"
+          );
+        }
+        if (error.message?.includes("timeout") || error.message?.includes("network")) {
+          console.error(
+            "[ForgeRock Callback] NETWORK/TIMEOUT ERROR - Check your network connection and server availability"
+          );
+        }
+        if (error.message?.includes("internal") || error.message?.includes("could not be completed")) {
+          console.error(
+            "[ForgeRock Callback] INTERNAL ERROR - This could be due to:\n" +
+            "1. Redirect URI mismatch (most common)\n" +
+            "2. Invalid client ID\n" +
+            "3. Server configuration issue\n" +
+            "4. Network/CORS issues\n" +
+            "Please check the console for more details and verify your OAuth provider configuration."
+          );
+        }
+        
         console.log("[ForgeRock Callback] Redirecting to login due to error");
         navigate("/login", { replace: true });
       }
