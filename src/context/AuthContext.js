@@ -238,7 +238,9 @@ export const AuthProvider = ({ children }) => {
 
           if (baseUrl && realmPath) {
             // Construct the well-known endpoint URL
-            const wellknownUrl = `${baseUrl}/oauth2/realms/root/realms/${realmPath}/.well-known/openid-configuration`;
+            // const wellknownUrl = `${baseUrl}/oauth2/realms/root/realms/${realmPath}/.well-known/openid-configuration`;
+            const wellknownUrl = `${baseUrl}/XUI?realm=/${realmPath}`;
+            console.log(`wellknownURL------>`, wellknownUrl);
             serverConfig.wellknown = wellknownUrl;
             console.log(
               `[${providerName} Auth] Constructed well-known endpoint:`,
