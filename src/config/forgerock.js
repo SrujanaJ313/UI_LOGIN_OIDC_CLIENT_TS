@@ -14,7 +14,7 @@ const pingOneConfig = {
 const forgerockOpenAMConfig = {
   clientId: "reactClientPKCE",
   redirectUri: "http://localhost:3000/callback",
-  scope: process.env.REACT_APP_FORGEROCK_SCOPE || "openid profile email phone",
+  scope: process.env.REACT_APP_FORGEROCK_SCOPE || "openid profile email",
   serverConfig: {
     baseUrl: "https://wfcssodev1.nhes.nh.gov/sso",
     realmPath: "wfcnhes",

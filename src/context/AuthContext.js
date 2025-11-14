@@ -491,121 +491,137 @@ export const AuthProvider = ({ children }) => {
       );
       setIsLoading(true);
 
-      // Try to get tokens with redirect - this should redirect automatically
-      // If it doesn't redirect, we'll catch and handle it
+      // For ForgeRock, use manual redirect to avoid SDK adding prompt=none
+      // For PingOne, try SDK redirect first, then fallback to manual
+      if (isForgeRockLive) {
+        console.log(
+          `[${providerName} Auth] Using manual redirect for ForgeRock to ensure login page is shown...`
+        );
+        // Skip SDK redirect and go straight to manual redirect for ForgeRock
+      } else {
+        // PingOne: Try SDK redirect first
+        console.log(
+          `[${providerName} Auth] Attempting SDK redirect to ${providerName} authorization server...`
+        );
+        try {
+          // This should redirect automatically, but if it doesn't, we'll handle it
+          const tokens = await TokenManager.getTokens({
+            login: "redirect",
+          });
+
+          // If we get here, the redirect didn't happen (unexpected)
+          console.warn(
+            `[${providerName} Auth] getTokens returned without redirecting. Tokens:`,
+            tokens
+          );
+
+          // If we have tokens, user might already be authenticated
+          if (tokens && tokens.accessToken) {
+            console.log(
+              `[${providerName} Auth] Already authenticated, loading user info...`
+            );
+            await loadUserInfo();
+            navigate("/", { replace: true });
+            return;
+          } else {
+            // No tokens and no redirect - manually construct authorization URL
+            console.log(
+              `[${providerName} Auth] No redirect occurred, constructing authorization URL manually...`
+            );
+            // Fall through to manual redirect
+          }
+        } catch (redirectError) {
+          // SDK redirect failed, fall through to manual redirect
+          console.log(
+            `[${providerName} Auth] SDK redirect didn't trigger, attempting manual redirect...`
+          );
+        }
+      }
+
+      // Manual redirect for both providers (or fallback for PingOne)
       console.log(
-        `[${providerName} Auth] Attempting to redirect to ${providerName} authorization server...`
+        `[${providerName} Auth] Constructing manual authorization URL...`
       );
 
-      try {
-        // This should redirect automatically, but if it doesn't, we'll handle it
-        const tokens = await TokenManager.getTokens({
-          login: "redirect",
-        });
+      // Get the well-known configuration to construct the authorization URL
+      const config = await Config.get();
+      const wellknownUrl = config.serverConfig?.wellknown;
 
-        // If we get here, the redirect didn't happen (unexpected)
-        console.warn(
-          `[${providerName} Auth] getTokens returned without redirecting. Tokens:`,
-          tokens
-        );
-
-        // If we have tokens, user might already be authenticated
-        if (tokens && tokens.accessToken) {
-          console.log(
-            `[${providerName} Auth] Already authenticated, loading user info...`
-          );
-          await loadUserInfo();
-          navigate("/", { replace: true });
-        } else {
-          // No tokens and no redirect - manually construct authorization URL
-          // This fallback is mainly for PingOne, but can work for ForgeRock too
-          console.log(
-            `[${providerName} Auth] No redirect occurred, constructing authorization URL manually...`
-          );
-          throw new Error("Redirect not triggered, will use manual redirect");
-        }
-      } catch (redirectError) {
-        // If redirect didn't happen, try manual redirect for both providers
-        console.log(
-          `[${providerName} Auth] SDK redirect didn't trigger, attempting manual redirect...`
-        );
-
-        // Get the well-known configuration to construct the authorization URL
-        const config = await Config.get();
-        const wellknownUrl = config.serverConfig?.wellknown;
-
-        if (wellknownUrl) {
-          try {
-            // Fetch the well-known configuration (this should work as it's a standard OIDC endpoint)
-            const response = await fetch(wellknownUrl);
-            if (!response.ok) {
-              throw new Error(
-                `Failed to fetch well-known config: ${response.status} ${response.statusText}`
-              );
-            }
-            const wellknown = await response.json();
-
-            // Generate PKCE code verifier and challenge (for PKCE flow)
-            const generateCodeVerifier = () => {
-              const array = new Uint8Array(32);
-              crypto.getRandomValues(array);
-              return btoa(String.fromCharCode(...array))
-                .replace(/\+/g, "-")
-                .replace(/\//g, "_")
-                .replace(/=/g, "");
-            };
-
-            const generateCodeChallenge = async (verifier) => {
-              const encoder = new TextEncoder();
-              const data = encoder.encode(verifier);
-              const digest = await crypto.subtle.digest("SHA-256", data);
-              return btoa(String.fromCharCode(...new Uint8Array(digest)))
-                .replace(/\+/g, "-")
-                .replace(/\//g, "_")
-                .replace(/=/g, "");
-            };
-
-            // Generate state for CSRF protection
-            const state =
-              Math.random().toString(36).substring(2, 15) +
-              Math.random().toString(36).substring(2, 15);
-
-            // Generate PKCE values
-            const codeVerifier = generateCodeVerifier();
-            const codeChallenge = await generateCodeChallenge(codeVerifier);
-
-            // Store code verifier in sessionStorage for later use
-            sessionStorage.setItem("pkce_code_verifier", codeVerifier);
-            sessionStorage.setItem("oauth_state", state);
-
-            // Construct authorization URL
-            const authUrl = new URL(wellknown.authorization_endpoint);
-            authUrl.searchParams.set("client_id", config.clientId);
-            authUrl.searchParams.set("redirect_uri", config.redirectUri);
-            authUrl.searchParams.set("response_type", "code");
-            authUrl.searchParams.set("scope", config.scope);
-            authUrl.searchParams.set("state", state);
-            authUrl.searchParams.set("code_challenge", codeChallenge);
-            authUrl.searchParams.set("code_challenge_method", "S256");
-
-            console.log(
-              `[${providerName} Auth] Redirecting to authorization endpoint:`,
-              authUrl.toString()
+      if (wellknownUrl) {
+        try {
+          // Fetch the well-known configuration (this should work as it's a standard OIDC endpoint)
+          const response = await fetch(wellknownUrl);
+          if (!response.ok) {
+            throw new Error(
+              `Failed to fetch well-known config: ${response.status} ${response.statusText}`
             );
-            // Perform the redirect using window.location.href to ensure proper browser redirect
-            // This avoids CORS issues as it's a full page navigation, not a fetch request
-            window.location.href = authUrl.toString();
-            return; // Exit function as redirect is happening
-          } catch (urlError) {
-            console.error(
-              `[${providerName} Auth] Error constructing authorization URL:`,
-              urlError
-            );
-            throw urlError;
           }
-        } else {
-          throw new Error("Well-known URL not configured");
+          const wellknown = await response.json();
+
+          // Generate PKCE code verifier and challenge (for PKCE flow)
+          const generateCodeVerifier = () => {
+            const array = new Uint8Array(32);
+            crypto.getRandomValues(array);
+            return btoa(String.fromCharCode(...array))
+              .replace(/\+/g, "-")
+              .replace(/\//g, "_")
+              .replace(/=/g, "");
+          };
+
+          const generateCodeChallenge = async (verifier) => {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(verifier);
+            const digest = await crypto.subtle.digest("SHA-256", data);
+            return btoa(String.fromCharCode(...new Uint8Array(digest)))
+              .replace(/\+/g, "-")
+              .replace(/\//g, "_")
+              .replace(/=/g, "");
+          };
+
+          // Generate state for CSRF protection
+          const state =
+            Math.random().toString(36).substring(2, 15) +
+            Math.random().toString(36).substring(2, 15);
+
+          // Generate PKCE values
+          const codeVerifier = generateCodeVerifier();
+          const codeChallenge = await generateCodeChallenge(codeVerifier);
+
+          // Store code verifier in sessionStorage for later use
+          sessionStorage.setItem("pkce_code_verifier", codeVerifier);
+          sessionStorage.setItem("oauth_state", state);
+
+          // Construct authorization URL
+          const authUrl = new URL(wellknown.authorization_endpoint);
+          authUrl.searchParams.set("client_id", config.clientId);
+          authUrl.searchParams.set("redirect_uri", config.redirectUri);
+          authUrl.searchParams.set("response_type", "code");
+          authUrl.searchParams.set("scope", config.scope);
+          authUrl.searchParams.set("state", state);
+          authUrl.searchParams.set("code_challenge", codeChallenge);
+          authUrl.searchParams.set("code_challenge_method", "S256");
+
+          // For ForgeRock, explicitly do NOT add prompt=none to ensure login page is shown
+          // The SDK was adding prompt=none which skips the login page
+          // By not setting prompt, ForgeRock will show the login page if user is not authenticated
+
+          console.log(
+            `[${providerName} Auth] Redirecting to authorization endpoint (login page will be shown):`,
+            authUrl.toString()
+          );
+          // Perform the redirect using window.location.href to ensure proper browser redirect
+          // This avoids CORS issues as it's a full page navigation, not a fetch request
+          window.location.href = authUrl.toString();
+          return; // Exit function as redirect is happening
+        } catch (urlError) {
+          console.error(
+            `[${providerName} Auth] Error constructing authorization URL:`,
+            urlError
+          );
+          throw urlError;
         }
+      } else {
+        throw new Error("Well-known URL not configured");
       }
     } catch (error) {
       console.error(`[${providerName} Auth] Login error:`, error);
