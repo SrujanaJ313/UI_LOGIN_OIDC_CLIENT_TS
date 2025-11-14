@@ -18,9 +18,8 @@ const forgerockOpenAMConfig = {
   serverConfig: {
     baseUrl: "https://wfcssodev1.nhes.nh.gov/sso",
     realmPath: "wfcnhes",
-    timeout: 3000,
+    timeout: 30000, // ⭐ IMPORTANT: Changed from 3000
   },
-  // tree: process.env.REACT_APP_FORGEROCK_TREE || undefined,
 };
 
 export const forgerockConfig = IS_FORGE_ROCK_LIVE
