@@ -445,9 +445,23 @@ export const AuthProvider = ({ children }) => {
               setIsLoading(false);
             }
           } else {
-            // ForgeRock: Normal token check (iframes may work)
+            // ForgeRock: Check for tokens without triggering silent authentication
+            // We use a timeout to prevent the SDK from trying to silently authenticate
+            // which would add prompt=none and prevent the login page from showing
             try {
-              const tokens = await TokenManager.getTokens();
+              const tokens = await Promise.race([
+                TokenManager.getTokens(),
+                new Promise((_, reject) =>
+                  setTimeout(
+                    () =>
+                      reject(
+                        new Error("Token check timeout - avoiding silent auth")
+                      ),
+                    2000
+                  )
+                ),
+              ]);
+
               if (tokens && tokens.accessToken) {
                 console.log(
                   `[${providerName} Auth] Found existing tokens, loading user info...`
@@ -459,7 +473,12 @@ export const AuthProvider = ({ children }) => {
                 setIsLoading(false);
               }
             } catch (error) {
-              console.log(`[${providerName} Auth] No existing tokens found`);
+              // If we get a timeout or any error, assume no tokens exist
+              // This prevents the SDK from triggering silent authentication with prompt=none
+              console.log(
+                `[${providerName} Auth] No existing tokens found (avoiding silent auth):`,
+                error.message
+              );
               setIsAuthenticated(false);
               setIsLoading(false);
             }
@@ -601,17 +620,35 @@ export const AuthProvider = ({ children }) => {
           authUrl.searchParams.set("code_challenge", codeChallenge);
           authUrl.searchParams.set("code_challenge_method", "S256");
 
-          // For ForgeRock, explicitly do NOT add prompt=none to ensure login page is shown
-          // The SDK was adding prompt=none which skips the login page
-          // By not setting prompt, ForgeRock will show the login page if user is not authenticated
+          // For ForgeRock, explicitly REMOVE prompt=none if it exists and do NOT add it
+          // The SDK might have added it, or it might be in the well-known endpoint
+          // We want to show the login page, so we explicitly remove prompt=none
+          if (authUrl.searchParams.has("prompt")) {
+            console.warn(
+              `[${providerName} Auth] Removing prompt parameter to ensure login page is shown`
+            );
+            authUrl.searchParams.delete("prompt");
+          }
+          // Explicitly do NOT add prompt=none - we want the login page to appear
 
+          const finalAuthUrl = authUrl.toString();
           console.log(
-            `[${providerName} Auth] Redirecting to authorization endpoint (login page will be shown):`,
-            authUrl.toString()
+            `[${providerName} Auth] Final authorization URL (login page will be shown):`,
+            finalAuthUrl
           );
+
+          // Verify prompt=none is NOT in the URL
+          if (finalAuthUrl.includes("prompt=none")) {
+            console.error(
+              `[${providerName} Auth] ERROR: prompt=none is still in the URL! This will prevent the login page from showing.`
+            );
+            throw new Error(
+              "prompt=none detected in authorization URL - this will prevent login page from showing"
+            );
+          }
           // Perform the redirect using window.location.href to ensure proper browser redirect
           // This avoids CORS issues as it's a full page navigation, not a fetch request
-          window.location.href = authUrl.toString();
+          window.location.href = finalAuthUrl;
           return; // Exit function as redirect is happening
         } catch (urlError) {
           console.error(
