@@ -446,11 +446,11 @@ export const AuthProvider = ({ children }) => {
             forgerockConfig.realmPath;
 
           if (baseUrl && realmPath) {
-            // CORRECT: Use OpenID Discovery endpoint
+            // ✅ CORRECT: Point to OpenID Discovery endpoint
             const wellknownUrl = `${baseUrl}/oauth2/realms/root/realms/${realmPath}/.well-known/openid-configuration`;
-            // https://wfcssodev1.nhes.nh.gov.143/sso/oauth2/realms/root/realms/wfcnhes/.well-known/openid-configuration
 
-            serverConfig.wellknown = wellknownUrl;
+            serverConfig.wellknown = wellknownUrl; // ✅ Just the discovery endpoint
+
             console.log(
               `[${providerName} Auth] Constructed well-known endpoint:`,
               wellknownUrl
