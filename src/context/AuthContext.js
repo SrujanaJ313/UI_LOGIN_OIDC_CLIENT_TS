@@ -28,6 +28,7 @@ export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState("");
   const navigate = useNavigate();
+  const [isInitialized, setIsInitialized] = useState(false);
 
   // ========================================
   // UTILITY FUNCTIONS
@@ -221,87 +222,6 @@ export const AuthProvider = ({ children }) => {
   };
 
   /**
-   * Check for existing tokens and restore session, or redirect to login
-   */
-  const checkAndRestoreTokensOrRedirect = async (redirectUri) => {
-    try {
-      console.log(
-        `[${providerName} Auth] Attempting to restore existing session...`
-      );
-
-      let tokens = null;
-
-      if (!isForgeRockLive) {
-        // PingOne: Use Promise.race to avoid iframe-based token renewal issues
-        try {
-          tokens = await Promise.race([
-            TokenManager.getTokens(),
-            new Promise((_, reject) =>
-              setTimeout(() => reject(new Error("Token check timeout")), 2000)
-            ),
-          ]);
-        } catch (timeoutError) {
-          console.log(
-            `[${providerName} Auth] Token check timed out (PingOne) - will redirect to login`
-          );
-          tokens = null;
-        }
-      } else {
-        // ForgeRock: Direct token check
-        tokens = await TokenManager.getTokens();
-      }
-
-      if (tokens && tokens.accessToken) {
-        console.log(
-          `[${providerName} Auth] Found existing valid tokens - restoring session...`
-        );
-
-        try {
-          const userLoaded = await loadUserInfo();
-          if (userLoaded) {
-            console.log(
-              `[${providerName} Auth] User info loaded from existing session`
-            );
-            setIsAuthenticated(true);
-            setIsLoading(false);
-          } else {
-            throw new Error("Failed to load user info");
-          }
-        } catch (userInfoError) {
-          console.warn(
-            `[${providerName} Auth] Could not load user info with existing tokens:`,
-            userInfoError.message
-          );
-          // Token exists but user info failed - might be expired
-          // Mark as authenticated but will need to refresh
-          setIsAuthenticated(true);
-          setIsLoading(false);
-        }
-      } else {
-        console.log(
-          `[${providerName} Auth] No valid existing tokens - redirecting to ForgeRock login...`
-        );
-        setIsAuthenticated(false);
-        setIsLoading(false);
-
-        // AUTOMATIC REDIRECT TO FORGEROCK LOGIN
-        await redirectToForgeRockLogin(redirectUri);
-      }
-    } catch (error) {
-      console.log(
-        `[${providerName} Auth] Token restoration failed:`,
-        error.message
-      );
-      console.log(`[${providerName} Auth] Redirecting to ForgeRock login...`);
-      setIsAuthenticated(false);
-      setIsLoading(false);
-
-      // AUTOMATIC REDIRECT TO FORGEROCK LOGIN
-      await redirectToForgeRockLogin(redirectUri);
-    }
-  };
-
-  /**
    * Redirect user to ForgeRock login page
    */
   const redirectToForgeRockLogin = async (redirectUri) => {
@@ -387,91 +307,61 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  // ========================================
-  // INITIALIZATION - Main useEffect
-  // ========================================
+  // Add this state at the top of your component
 
+  // Then use this useEffect
   useEffect(() => {
+    // Only run initialization ONCE
+    if (isInitialized) {
+      console.log(`[${providerName} Auth] Already initialized, skipping...`);
+      return;
+    }
+
     const initializeForgeRock = async () => {
       try {
         console.log(
           `[${providerName} Auth] Initializing ${providerName} SDK...`
         );
-        console.log(`[${providerName} Auth] Configuration:`, {
-          provider: providerName,
-          clientId: forgerockConfig.clientId,
-          redirectUri: forgerockConfig.redirectUri,
-          scope: forgerockConfig.scope,
-          baseUrl: forgerockConfig.serverConfig?.baseUrl,
-          realmPath:
-            forgerockConfig.serverConfig?.realmPath ||
-            forgerockConfig.realmPath,
-        });
 
-        // Step 1: Determine and validate redirectUri
+        // Step 1: Setup config
         let redirectUri = forgerockConfig.redirectUri;
 
         if (!isForgeRockLive) {
-          // PingOne: redirectUri should be root path
           if (redirectUri && !redirectUri.startsWith(window.location.origin)) {
-            console.warn(
-              `[${providerName} Auth] Config redirectUri doesn't match current origin. Using current origin`,
-              {
-                configRedirectUri: redirectUri,
-                currentOrigin: window.location.origin,
-                using: window.location.origin,
-              }
-            );
             redirectUri = window.location.origin;
           } else if (!redirectUri) {
             redirectUri = window.location.origin;
           }
         } else {
-          // ForgeRock: redirectUri should include /callback path
           if (!redirectUri) {
             redirectUri = `${window.location.origin}/callback`;
           }
         }
 
-        console.log(`[${providerName} Auth] Using redirectUri:`, redirectUri);
-
-        // Step 2: Build serverConfig based on provider
         const serverConfig = {};
 
         if (isForgeRockLive) {
-          // ForgeRock OpenAM
           const baseUrl = forgerockConfig.serverConfig?.baseUrl;
           const realmPath =
             forgerockConfig.serverConfig?.realmPath ||
             forgerockConfig.realmPath;
 
           if (baseUrl && realmPath) {
-            // ✅ CORRECT: Point to OpenID Discovery endpoint
             const wellknownUrl = `${baseUrl}/oauth2/realms/root/realms/${realmPath}/.well-known/openid-configuration`;
-
-            serverConfig.wellknown = wellknownUrl; // ✅ Just the discovery endpoint
-
+            serverConfig.wellknown = wellknownUrl;
             console.log(
-              `[${providerName} Auth] Constructed well-known endpoint:`,
+              `[${providerName} Auth] Well-known endpoint:`,
               wellknownUrl
             );
-          } else {
-            console.error(
-              `[${providerName} Auth] Missing baseUrl or realmPath configuration`
-            );
-            if (baseUrl) serverConfig.baseUrl = baseUrl;
-            if (realmPath) serverConfig.realmPath = realmPath;
           }
           serverConfig.timeout = forgerockConfig.serverConfig?.timeout || 30000;
         } else {
-          // PingOne
           if (forgerockConfig.serverConfig?.wellknown) {
             serverConfig.wellknown = forgerockConfig.serverConfig.wellknown;
           }
           serverConfig.timeout = forgerockConfig.serverConfig?.timeout || 3000;
         }
 
-        // Step 3: Build configuration object
         const configObject = {
           clientId: forgerockConfig.clientId,
           redirectUri: redirectUri,
@@ -479,88 +369,89 @@ export const AuthProvider = ({ children }) => {
           serverConfig: serverConfig,
         };
 
-        // Add tree if configured (ForgeRock only)
         if (isForgeRockLive && forgerockConfig.tree) {
           configObject.tree = forgerockConfig.tree;
         }
 
-        // PingOne: Configure token storage
         if (!isForgeRockLive) {
           configObject.tokenStore = {
             storage: window.localStorage,
           };
         }
 
-        // Step 4: Set SDK configuration
-        const result = await Config.setAsync(configObject);
+        // Step 2: Set SDK config
+        await Config.setAsync(configObject);
         console.log(
-          `[${providerName} Auth] SDK configuration set successfully:`,
-          result
+          `[${providerName} Auth] SDK configuration set successfully`
         );
 
-        // Step 5: Parse URL parameters for OAuth callback
-        let urlParams;
-        let code, state;
-        let currentPath = "unknown";
+        // Step 3: Check for OAuth callback
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get("code");
+        const state = urlParams.get("state");
 
-        try {
-          urlParams = new URLSearchParams(window.location.search);
-          code = urlParams.get("code");
-          state = urlParams.get("state");
-          currentPath = window.location.pathname || "unknown";
-        } catch (error) {
-          console.warn(
-            `[${providerName} Auth] Could not access location properties:`,
-            error.message
-          );
-          try {
-            const search =
-              window.location?.search || document.location?.search || "";
-            urlParams = new URLSearchParams(search);
-            code = urlParams.get("code");
-            state = urlParams.get("state");
-          } catch (e) {
-            console.warn(
-              `[${providerName} Auth] Could not parse URL parameters`
-            );
-          }
-        }
+        console.log(
+          `[${providerName} Auth] URL check - hasCode: ${!!code}, hasState: ${!!state}`
+        );
 
-        console.log(`[${providerName} Auth] URL parameters:`, {
-          hasCode: !!code,
-          hasState: !!state,
-          currentPath: currentPath,
-        });
-
-        // Step 6: Handle OAuth callback or check for existing tokens
         if (code && state) {
+          // ✅ WE HAVE AUTH CODE - Process callback
           console.log(
             `[${providerName} Auth] OAuth callback detected - exchanging code for tokens...`
           );
           await handleOAuthCallback(code, state);
         } else {
+          // ❌ NO AUTH CODE - Check for existing tokens
           console.log(
-            `[${providerName} Auth] No OAuth callback - checking for existing tokens...`
+            `[${providerName} Auth] No callback - checking existing tokens...`
           );
-          await checkAndRestoreTokensOrRedirect(redirectUri);
+
+          try {
+            const tokens = await TokenManager.getTokens();
+
+            if (tokens && tokens.accessToken) {
+              console.log(
+                `[${providerName} Auth] ✅ Found existing tokens - loading user...`
+              );
+              await loadUserInfo();
+              setIsLoading(false);
+            } else {
+              console.log(
+                `[${providerName} Auth] ❌ No tokens - redirecting to ForgeRock login`
+              );
+
+              // ⭐ REDIRECT TO FORGEROCK
+              await redirectToForgeRockLogin(redirectUri);
+
+              // Mark as initialized so we don't redirect again
+              setIsInitialized(true);
+            }
+          } catch (error) {
+            console.log(
+              `[${providerName} Auth] Token check failed - redirecting to ForgeRock login`
+            );
+
+            // ⭐ REDIRECT TO FORGEROCK
+            await redirectToForgeRockLogin(redirectUri);
+
+            // Mark as initialized so we don't redirect again
+            setIsInitialized(true);
+          }
         }
       } catch (error) {
-        console.error(
-          `[${providerName} Auth] Error initializing ${providerName}:`,
-          error
-        );
-        console.error(`[${providerName} Auth] Initialization error details:`, {
-          message: error.message,
-          stack: error.stack,
-        });
-        setIsAuthenticated(false);
+        console.error(`[${providerName} Auth] Initialization error:`, error);
         setIsLoading(false);
       }
     };
 
+    // Run initialization
     initializeForgeRock();
+
+    // Mark as initialized after first run
+    setIsInitialized(true);
+
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, []); // Empty dependency array = run only once on mount
 
   // ========================================
   // LOGIN FUNCTION
