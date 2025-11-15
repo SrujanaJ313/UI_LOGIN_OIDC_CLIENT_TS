@@ -611,7 +611,23 @@ export const AuthProvider = ({ children }) => {
           sessionStorage.setItem("oauth_state", state);
 
           // Construct authorization URL
-          const authUrl = new URL(wellknown.authorization_endpoint);
+          // IMPORTANT: Extract just the base URL without any query parameters
+          // This ensures we start with a clean slate and no prompt=none from the well-known endpoint
+          let baseAuthUrl = wellknown.authorization_endpoint;
+          const urlParts = baseAuthUrl.split("?");
+          baseAuthUrl = urlParts[0]; // Get base URL without query string
+
+          console.log(
+            `[${providerName} Auth] Using clean authorization endpoint:`,
+            baseAuthUrl
+          );
+
+          const authUrl = new URL(baseAuthUrl);
+
+          // Clear any existing search params to ensure clean URL
+          authUrl.search = "";
+
+          // Add all required parameters explicitly
           authUrl.searchParams.set("client_id", config.clientId);
           authUrl.searchParams.set("redirect_uri", config.redirectUri);
           authUrl.searchParams.set("response_type", "code");
@@ -620,35 +636,49 @@ export const AuthProvider = ({ children }) => {
           authUrl.searchParams.set("code_challenge", codeChallenge);
           authUrl.searchParams.set("code_challenge_method", "S256");
 
-          // For ForgeRock, explicitly REMOVE prompt=none if it exists and do NOT add it
-          // The SDK might have added it, or it might be in the well-known endpoint
-          // We want to show the login page, so we explicitly remove prompt=none
+          // For ForgeRock, explicitly do NOT add prompt parameter
+          // If prompt is not set, ForgeRock will show the login page when user is not authenticated
+          // We explicitly ensure prompt is NOT in the URL
           if (authUrl.searchParams.has("prompt")) {
             console.warn(
-              `[${providerName} Auth] Removing prompt parameter to ensure login page is shown`
+              `[${providerName} Auth] ⚠️ Unexpected prompt parameter found, removing it...`
             );
             authUrl.searchParams.delete("prompt");
           }
-          // Explicitly do NOT add prompt=none - we want the login page to appear
 
           const finalAuthUrl = authUrl.toString();
           console.log(
-            `[${providerName} Auth] Final authorization URL (login page will be shown):`,
+            `[${providerName} Auth] ✅ Constructed authorization URL:`,
             finalAuthUrl
           );
 
-          // Verify prompt=none is NOT in the URL
-          if (finalAuthUrl.includes("prompt=none")) {
+          // Multiple validation checks to ensure prompt=none is NOT in the URL
+          if (
+            finalAuthUrl.includes("prompt=none") ||
+            finalAuthUrl.includes("prompt%3Dnone") ||
+            authUrl.searchParams.get("prompt") === "none"
+          ) {
             console.error(
-              `[${providerName} Auth] ERROR: prompt=none is still in the URL! This will prevent the login page from showing.`
+              `[${providerName} Auth] ❌ ERROR: prompt=none is still in the URL!`,
+              {
+                url: finalAuthUrl,
+                hasPromptParam: authUrl.searchParams.has("prompt"),
+                promptValue: authUrl.searchParams.get("prompt"),
+              }
             );
             throw new Error(
               "prompt=none detected in authorization URL - this will prevent login page from showing"
             );
           }
-          // Perform the redirect using window.location.href to ensure proper browser redirect
+
+          console.log(
+            `[${providerName} Auth] ✅ URL verified - no prompt=none. Redirecting to login page...`
+          );
+
+          // Perform the redirect using window.location.replace to ensure proper browser redirect
           // This avoids CORS issues as it's a full page navigation, not a fetch request
-          window.location.href = finalAuthUrl;
+          // Using replace() prevents back button issues
+          window.location.replace(finalAuthUrl);
           return; // Exit function as redirect is happening
         } catch (urlError) {
           console.error(
