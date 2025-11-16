@@ -162,7 +162,7 @@ export const AuthProvider = ({ children }) => {
           forgerockConfig.serverConfig?.realmPath || forgerockConfig.realmPath;
 
         if (baseUrl && realmPath) {
-          let wellknownUrl = `${baseUrl}/oauth2/realms/root/realms/${realmPath}/.well-known/openid-configuration`;
+          let wellknownUrl = `${baseUrl}/oauth2/realms/root/realms/${realmPath}/well-known/openid-configuration`;
           wellknownUrl = wellknownUrl.replace(/([^:]\/)\/+/g, "$1");
 
           try {
@@ -599,7 +599,7 @@ export const AuthProvider = ({ children }) => {
           const baseUrl = config.serverConfig?.baseUrl;
           const realmPath = config.serverConfig?.realmPath;
           if (baseUrl && realmPath) {
-            wellknownUrl = `${baseUrl}/oauth2/realms/root/realms/${realmPath}/.well-known/openid-configuration`;
+            wellknownUrl = `${baseUrl}/oauth2/realms/root/realms/${realmPath}/well-known/openid-configuration`;
           }
         }
 
