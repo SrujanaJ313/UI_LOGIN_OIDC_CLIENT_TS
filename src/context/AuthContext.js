@@ -3,6 +3,7 @@ import {
   Config,
   OAuth2Client,
   TokenManager,
+  TokenStorage,
   UserManager,
   FRUser,
 } from "@forgerock/javascript-sdk";
@@ -27,6 +28,7 @@ export const AuthProvider = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState("");
+  const [shouldAutoLogin, setShouldAutoLogin] = useState(false);
   const navigate = useNavigate();
 
   const loadUserInfo = async () => {
@@ -229,31 +231,77 @@ export const AuthProvider = ({ children }) => {
         const serverConfig = {};
 
         if (isForgeRockLive) {
-          // ForgeRock OpenAM: Construct well-known endpoint from baseUrl and realmPath
-          // Format: {baseUrl}/oauth2/realms/root/realms/{realmPath}/.well-known/openid-configuration
+          // ForgeRock OpenAM: Fetch well-known config ourselves and use Config.set instead of setAsync
+          // This avoids SDK's URL construction issues with setAsync
           const baseUrl = forgerockConfig.serverConfig?.baseUrl;
           const realmPath =
             forgerockConfig.serverConfig?.realmPath ||
             forgerockConfig.realmPath;
 
           if (baseUrl && realmPath) {
-            // Construct the well-known endpoint URL
-            // Format: {baseUrl}/oauth2/realms/root/realms/{realmPath}/.well-known/openid-configuration
-            const wellknownUrl = `${baseUrl}/oauth2/realms/root/realms/${realmPath}/.well-known/openid-configuration`;
-            console.log(`[${providerName} Auth] Well-known URL:`, wellknownUrl);
-            serverConfig.wellknown = wellknownUrl;
-            console.log(
-              `[${providerName} Auth] Constructed well-known endpoint:`,
-              wellknownUrl
-            );
-          } else {
-            // Fallback: Use baseUrl and realmPath directly (may not work with setAsync)
-            if (baseUrl) {
-              serverConfig.baseUrl = baseUrl;
-            }
-            if (realmPath) {
+            // Construct well-known URL
+            let wellknownUrl = `${baseUrl}/oauth2/realms/root/realms/${realmPath}/.well-known/openid-configuration`;
+            wellknownUrl = wellknownUrl.replace(/([^:]\/)\/+/g, '$1');
+            
+            try {
+              // Fetch well-known config ourselves
+              // Works for both mock server (localhost:8080) and real ForgeRock server
+              console.log(`[${providerName} Auth] Fetching well-known config from:`, wellknownUrl);
+              const wellknownResponse = await fetch(wellknownUrl);
+              if (!wellknownResponse.ok) {
+                const errorText = await wellknownResponse.text().catch(() => 'Unknown error');
+                console.error(`[${providerName} Auth] Well-known config fetch failed:`, {
+                  status: wellknownResponse.status,
+                  statusText: wellknownResponse.statusText,
+                  url: wellknownUrl,
+                  error: errorText
+                });
+                throw new Error(`Failed to fetch well-known: ${wellknownResponse.status} ${wellknownResponse.statusText}. URL: ${wellknownUrl}`);
+              }
+              const wellknownData = await wellknownResponse.json();
+              
+              // Extract baseUrl from issuer for Config.set
+              // Issuer format: {baseUrl}/oauth2/realms/root/realms/{realmPath}
+              // BaseUrl should be: {baseUrl} (extracted from issuer)
+              // Works for both mock server (http://localhost:8080/sso) and real server (https://wfcssodev1.nhes.nh.gov/sso)
+              const issuerUrl = new URL(wellknownData.issuer);
+              const issuerPath = issuerUrl.pathname;
+              // Extract base path before /oauth2
+              const basePathMatch = issuerPath.match(/^(.+?)\/oauth2/);
+              const basePath = basePathMatch ? basePathMatch[1] : '';
+              serverConfig.baseUrl = `${issuerUrl.origin}${basePath}`;
+              
+              // Keep realmPath for Config.set - ensure it's properly formatted
               serverConfig.realmPath = realmPath;
+              
+              // Set all endpoints explicitly so SDK uses correct URLs
+              // This prevents SDK from constructing wrong URLs like /oauth2/realms/root/authorize
+              serverConfig.authorizeEndpoint = wellknownData.authorization_endpoint;
+              serverConfig.tokenEndpoint = wellknownData.token_endpoint;
+              serverConfig.userInfoEndpoint = wellknownData.userinfo_endpoint;
+              serverConfig.endSessionEndpoint = wellknownData.end_session_endpoint;
+              
+              // Store for manual redirect later (keep the old property name for backward compatibility)
+              serverConfig.authorizationEndpoint = wellknownData.authorization_endpoint;
+              
+              console.log(`[${providerName} Auth] Well-known config fetched:`, {
+                baseUrl: serverConfig.baseUrl,
+                realmPath: serverConfig.realmPath,
+                authorizationEndpoint: serverConfig.authorizationEndpoint
+              });
+              console.log(`[${providerName} Auth] Using Config.set instead of setAsync to avoid URL construction issues`);
+            } catch (fetchError) {
+              console.error(
+                `[${providerName} Auth] Error fetching well-known config:`,
+                fetchError
+              );
+              throw fetchError;
             }
+          } else {
+            console.error(
+              `[${providerName} Auth] Missing baseUrl or realmPath configuration`,
+              { baseUrl, realmPath }
+            );
           }
           serverConfig.timeout = forgerockConfig.serverConfig?.timeout || 30000;
         } else {
@@ -262,6 +310,18 @@ export const AuthProvider = ({ children }) => {
             serverConfig.wellknown = forgerockConfig.serverConfig.wellknown;
           }
           serverConfig.timeout = forgerockConfig.serverConfig?.timeout || 3000;
+        }
+
+        // Validate redirectUri before passing to SDK
+        try {
+          new URL(redirectUri);
+        } catch (urlError) {
+          console.error(
+            `[${providerName} Auth] Invalid redirectUri:`,
+            redirectUri,
+            urlError
+          );
+          throw new Error(`Invalid redirectUri: ${redirectUri}`);
         }
 
         const configObject = {
@@ -283,7 +343,36 @@ export const AuthProvider = ({ children }) => {
           };
         }
 
-        const result = await Config.setAsync(configObject);
+        console.log(`[${providerName} Auth] Config object before SDK call:`, {
+          clientId: configObject.clientId,
+          redirectUri: configObject.redirectUri,
+          scope: configObject.scope,
+          serverConfig: serverConfig
+        });
+
+        let result;
+        try {
+          if (isForgeRockLive && !serverConfig.wellknown) {
+            // For ForgeRock, use Config.set since we fetched well-known config ourselves
+            Config.set(configObject);
+            result = configObject;
+            console.log(`[${providerName} Auth] Used Config.set (well-known config fetched manually)`);
+          } else {
+            // For PingOne or if wellknown is provided, use Config.setAsync
+            result = await Config.setAsync(configObject);
+          }
+        } catch (sdkError) {
+          console.error(
+            `[${providerName} Auth] SDK configuration error:`,
+            sdkError.message,
+            sdkError.stack
+          );
+          console.error(
+            `[${providerName} Auth] Config that failed:`,
+            JSON.stringify(configObject, null, 2)
+          );
+          throw sdkError;
+        }
         console.log(
           `[${providerName} Auth] SDK configuration set successfully:`,
           result
@@ -328,15 +417,132 @@ export const AuthProvider = ({ children }) => {
           console.log(
             `[${providerName} Auth] OAuth callback detected - exchanging code for tokens...`
           );
-          // Handle OAuth callback - exchange code for tokens
+          // Handle OAuth callback - manually exchange code for tokens
+          // to avoid SDK's silent authentication attempt with wrong URL
           try {
-            const tokens = await OAuth2Client.getTokens();
-            if (tokens && tokens.accessToken) {
+            // Get stored PKCE code verifier
+            const codeVerifier = sessionStorage.getItem("pkce_code_verifier");
+            const storedState = sessionStorage.getItem("oauth_state");
+            
+            // Validate state
+            if (state !== storedState) {
+              throw new Error("Invalid state parameter - possible CSRF attack");
+            }
+            
+            // Get token endpoint from config
+            const config = await Config.get();
+            const tokenEndpoint = config.serverConfig?.tokenEndpoint || config.serverConfig?.token_endpoint;
+            
+            if (!tokenEndpoint) {
+              throw new Error("Token endpoint not configured");
+            }
+            
+            if (!codeVerifier) {
+              throw new Error("PKCE code verifier not found in storage");
+            }
+            
+            console.log(`[${providerName} Auth] Manually exchanging code for tokens...`);
+            console.log(`[${providerName} Auth] Token endpoint:`, tokenEndpoint);
+            
+            // Manually exchange authorization code for tokens
+            const tokenResponse = await fetch(tokenEndpoint, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/x-www-form-urlencoded",
+              },
+              body: new URLSearchParams({
+                grant_type: "authorization_code",
+                code: code,
+                redirect_uri: redirectUri,
+                client_id: forgerockConfig.clientId,
+                code_verifier: codeVerifier,
+              }),
+            });
+            
+            if (!tokenResponse.ok) {
+              const errorText = await tokenResponse.text().catch(() => 'Unknown error');
+              let errorData;
+              try {
+                errorData = JSON.parse(errorText);
+              } catch {
+                errorData = { error: errorText };
+              }
+              console.error(`[${providerName} Auth] Token exchange failed:`, {
+                status: tokenResponse.status,
+                statusText: tokenResponse.statusText,
+                endpoint: tokenEndpoint,
+                error: errorData,
+              });
+              const errorMessage = errorData.error_description || errorData.error || errorText;
+              throw new Error(`Token exchange failed: ${tokenResponse.status} ${tokenResponse.statusText} - ${errorMessage}`);
+            }
+            
+            const tokenData = await tokenResponse.json();
+            console.log(`[${providerName} Auth] Tokens received from manual exchange`);
+            
+            // Store tokens in TokenStorage (SDK's token storage)
+            // Use the proper token storage format expected by the SDK
+            const tokenStoreData = {
+              accessToken: tokenData.access_token,
+              idToken: tokenData.id_token,
+              refreshToken: tokenData.refresh_token,
+              expiresIn: tokenData.expires_in || 3600,
+              tokenType: tokenData.token_type || "Bearer",
+            };
+            
+            await TokenStorage.set(tokenStoreData);
+            
+            // Clean up stored PKCE values
+            sessionStorage.removeItem("pkce_code_verifier");
+            sessionStorage.removeItem("oauth_state");
+            
+            console.log(`[${providerName} Auth] Tokens stored successfully`);
+            
+            // Don't call TokenManager.getTokens() here as it might try to exchange the code again
+            // Instead, manually load user info using the stored token
+            if (tokenData.access_token) {
               console.log(
-                `[${providerName} Auth] Tokens received successfully from OAuth callback`
+                `[${providerName} Auth] Tokens received successfully from manual exchange`
               );
-              // Load user info which will set isAuthenticated to true
-              await loadUserInfo();
+              
+              // Manually load user info to avoid SDK's wrong URL construction
+              try {
+                const userInfoEndpoint = config.serverConfig?.userInfoEndpoint || config.serverConfig?.userinfo_endpoint;
+                if (!userInfoEndpoint) {
+                  throw new Error("UserInfo endpoint not configured");
+                }
+                
+                console.log(`[${providerName} Auth] Fetching user info from:`, userInfoEndpoint);
+                const userInfoResponse = await fetch(userInfoEndpoint, {
+                  headers: {
+                    'Authorization': `Bearer ${tokenData.access_token}`
+                  }
+                });
+                
+                if (!userInfoResponse.ok) {
+                  const errorText = await userInfoResponse.text().catch(() => 'Unknown error');
+                  console.error(`[${providerName} Auth] UserInfo fetch failed:`, {
+                    status: userInfoResponse.status,
+                    statusText: userInfoResponse.statusText,
+                    endpoint: userInfoEndpoint,
+                    error: errorText
+                  });
+                  throw new Error(`Failed to fetch user info: ${userInfoResponse.status} ${userInfoResponse.statusText}`);
+                }
+                
+                const userInfoData = await userInfoResponse.json();
+                console.log(`[${providerName} Auth] User info fetched successfully:`, userInfoData);
+                
+                // Set user info directly
+                setIsAuthenticated(true);
+                setUser(userInfoData);
+                setEmail(userInfoData.email || userInfoData.name || "");
+                console.log(`[${providerName} Auth] User authenticated successfully`);
+              } catch (userInfoError) {
+                console.error(`[${providerName} Auth] Error fetching user info:`, userInfoError);
+                // Try using SDK's UserManager as fallback
+                await loadUserInfo();
+              }
 
               // Verify authentication state is set
               // Give React a moment to update state before navigating
@@ -434,53 +640,79 @@ export const AuthProvider = ({ children }) => {
                 await loadUserInfo();
               } else {
                 console.log(`[${providerName} Auth] No existing tokens found`);
-                setIsAuthenticated(false);
-                setIsLoading(false);
+                console.log(
+                  `[${providerName} Auth] Will auto-redirect to SSO login on app load...`
+                );
+                // Set flag to trigger auto-login for PingOne when app starts and no tokens found
+                setIsLoading(true);
+                setShouldAutoLogin(true);
               }
             } catch (error) {
               console.log(
-                `[${providerName} Auth] Skipping token check to avoid iframe issues. User will authenticate on demand.`
+                `[${providerName} Auth] No tokens found. Will auto-redirect to SSO login on app load...`
               );
-              setIsAuthenticated(false);
-              setIsLoading(false);
+              // Set flag to trigger auto-login for PingOne when app starts and no tokens found
+              setIsLoading(true);
+              setShouldAutoLogin(true);
             }
           } else {
-            // ForgeRock: Check for tokens without triggering silent authentication
-            // We use a timeout to prevent the SDK from trying to silently authenticate
-            // which would add prompt=none and prevent the login page from showing
+            // ForgeRock: Check localStorage/sessionStorage directly instead of using getTokens()
+            // This avoids the SDK's silent authentication attempt which constructs wrong URLs
+            // and causes 404 errors and unwanted prompt=none requests
             try {
-              const tokens = await Promise.race([
-                TokenManager.getTokens(),
-                new Promise((_, reject) =>
-                  setTimeout(
-                    () =>
-                      reject(
-                        new Error("Token check timeout - avoiding silent auth")
-                      ),
-                    2000
-                  )
-                ),
-              ]);
+              // Check for tokens in storage (SDK stores tokens in sessionStorage/localStorage)
+              const tokenStorage = window.sessionStorage || window.localStorage;
+              const hasTokens = tokenStorage.getItem('FR-user') || 
+                               tokenStorage.getItem('FR-access') ||
+                               tokenStorage.getItem('FR-refresh') ||
+                               Object.keys(tokenStorage).some(key => key.startsWith('FR-'));
 
-              if (tokens && tokens.accessToken) {
-                console.log(
-                  `[${providerName} Auth] Found existing tokens, loading user info...`
-                );
-                await loadUserInfo();
+              if (hasTokens) {
+                // Tokens exist in storage, try loading user info directly
+                // Don't call TokenManager.getTokens() as it triggers silent auth with wrong URL
+                // Instead, try loading user info which will validate tokens if they exist
+                console.log(`[${providerName} Auth] Found tokens in storage, loading user info...`);
+                try {
+                  // Try loading user info directly - this will use existing tokens
+                  // If tokens are invalid, it will throw an error and we'll proceed to login
+                  await loadUserInfo();
+                  console.log(`[${providerName} Auth] User info loaded successfully from existing tokens`);
+                } catch (loadError) {
+                  // User info load failed - tokens are likely invalid or expired
+                  console.log(`[${providerName} Auth] Failed to load user info, tokens may be invalid:`, loadError.message);
+                  // Clear invalid tokens and proceed to login
+                  try {
+                    const tokenStorage = window.sessionStorage || window.localStorage;
+                    Object.keys(tokenStorage).forEach(key => {
+                      if (key.startsWith('FR-')) {
+                        tokenStorage.removeItem(key);
+                      }
+                    });
+                    console.log(`[${providerName} Auth] Cleared invalid tokens from storage`);
+                  } catch (clearError) {
+                    console.warn(`[${providerName} Auth] Failed to clear tokens:`, clearError);
+                  }
+                  setIsLoading(true);
+                  setShouldAutoLogin(true);
+                }
               } else {
-                console.log(`[${providerName} Auth] No existing tokens found`);
-                setIsAuthenticated(false);
-                setIsLoading(false);
+                console.log(`[${providerName} Auth] No existing tokens found in storage`);
+                console.log(
+                  `[${providerName} Auth] Will auto-redirect to SSO login on app load...`
+                );
+                // Set flag to trigger auto-login for ForgeRock when app starts and no tokens found
+                setIsLoading(true);
+                setShouldAutoLogin(true);
               }
             } catch (error) {
-              // If we get a timeout or any error, assume no tokens exist
+              // If any error, assume no tokens exist and proceed to login
               // This prevents the SDK from triggering silent authentication with prompt=none
               console.log(
-                `[${providerName} Auth] No existing tokens found (avoiding silent auth):`,
-                error.message
+                `[${providerName} Auth] No existing tokens found. Will auto-redirect to SSO login on app load...`
               );
-              setIsAuthenticated(false);
-              setIsLoading(false);
+              // Set flag to trigger auto-login for ForgeRock when app starts and no tokens found
+              setIsLoading(true);
+              setShouldAutoLogin(true);
             }
           }
         }
@@ -500,6 +732,24 @@ export const AuthProvider = ({ children }) => {
     initializeForgeRock();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-login effect for both PingOne and ForgeRock when shouldAutoLogin is true
+  useEffect(() => {
+    if (shouldAutoLogin) {
+      console.log(
+        `[${providerName} Auth] Auto-triggering SSO login on app load...`
+      );
+      setShouldAutoLogin(false); // Reset flag
+      login().catch((loginError) => {
+        console.error(
+          `[${providerName} Auth] Error during auto-login:`,
+          loginError
+        );
+        setIsLoading(false);
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shouldAutoLogin]);
 
   const login = async () => {
     try {
@@ -564,18 +814,51 @@ export const AuthProvider = ({ children }) => {
 
       // Get the well-known configuration to construct the authorization URL
       const config = await Config.get();
-      const wellknownUrl = config.serverConfig?.wellknown;
-
-      if (wellknownUrl) {
-        try {
-          // Fetch the well-known configuration (this should work as it's a standard OIDC endpoint)
-          const response = await fetch(wellknownUrl);
-          if (!response.ok) {
-            throw new Error(
-              `Failed to fetch well-known config: ${response.status} ${response.statusText}`
-            );
+      
+      let authorizationEndpoint = config.serverConfig?.authorizationEndpoint;
+      let wellknown;
+      
+      if (authorizationEndpoint) {
+        // Use stored authorization endpoint from well-known config we fetched earlier
+        console.log(`[${providerName} Auth] Using stored authorization endpoint:`, authorizationEndpoint);
+      } else {
+        // Fallback: Fetch well-known config if not already available
+        let wellknownUrl = config.serverConfig?.wellknown;
+        
+        // For ForgeRock, construct well-known URL from baseUrl and realmPath if not provided
+        if (!wellknownUrl && isForgeRockLive) {
+          const baseUrl = config.serverConfig?.baseUrl;
+          const realmPath = config.serverConfig?.realmPath;
+          if (baseUrl && realmPath) {
+            wellknownUrl = `${baseUrl}/oauth2/realms/root/realms/${realmPath}/.well-known/openid-configuration`;
           }
-          const wellknown = await response.json();
+        }
+
+        if (wellknownUrl) {
+          try {
+            // Fetch the well-known configuration (this should work as it's a standard OIDC endpoint)
+            const response = await fetch(wellknownUrl);
+            if (!response.ok) {
+              throw new Error(
+                `Failed to fetch well-known config: ${response.status} ${response.statusText}`
+              );
+            }
+            wellknown = await response.json();
+            authorizationEndpoint = wellknown.authorization_endpoint;
+          } catch (fetchError) {
+            console.error(
+              `[${providerName} Auth] Error fetching well-known config:`,
+              fetchError
+            );
+            throw fetchError;
+          }
+        } else {
+          throw new Error("No authorization endpoint available and cannot fetch well-known config");
+        }
+      }
+
+      if (authorizationEndpoint) {
+        try {
 
           // Generate PKCE code verifier and challenge (for PKCE flow)
           const generateCodeVerifier = () => {
@@ -613,7 +896,7 @@ export const AuthProvider = ({ children }) => {
           // Construct authorization URL
           // IMPORTANT: Extract just the base URL without any query parameters
           // This ensures we start with a clean slate and no prompt=none from the well-known endpoint
-          let baseAuthUrl = wellknown.authorization_endpoint;
+          let baseAuthUrl = authorizationEndpoint;
           const urlParts = baseAuthUrl.split("?");
           baseAuthUrl = urlParts[0]; // Get base URL without query string
 
@@ -636,14 +919,24 @@ export const AuthProvider = ({ children }) => {
           authUrl.searchParams.set("code_challenge", codeChallenge);
           authUrl.searchParams.set("code_challenge_method", "S256");
 
-          // For ForgeRock, explicitly do NOT add prompt parameter
-          // If prompt is not set, ForgeRock will show the login page when user is not authenticated
-          // We explicitly ensure prompt is NOT in the URL
-          if (authUrl.searchParams.has("prompt")) {
-            console.warn(
-              `[${providerName} Auth] ⚠️ Unexpected prompt parameter found, removing it...`
+          // For ForgeRock, explicitly set prompt=login to force the login page to appear
+          // For PingOne, do not set prompt (let it work naturally)
+          if (isForgeRockLive) {
+            // Force login page to show by setting prompt=login
+            // This overrides any server-side default that might add prompt=none
+            authUrl.searchParams.set("prompt", "login");
+            console.log(
+              `[${providerName} Auth] Setting prompt=login to force login page display`
             );
-            authUrl.searchParams.delete("prompt");
+          } else {
+            // For PingOne, don't set prompt parameter
+            // Remove prompt if it was somehow added
+            if (authUrl.searchParams.has("prompt")) {
+              console.warn(
+                `[${providerName} Auth] ⚠️ Unexpected prompt parameter found, removing it...`
+              );
+              authUrl.searchParams.delete("prompt");
+            }
           }
 
           const finalAuthUrl = authUrl.toString();
@@ -652,33 +945,64 @@ export const AuthProvider = ({ children }) => {
             finalAuthUrl
           );
 
-          // Multiple validation checks to ensure prompt=none is NOT in the URL
-          if (
-            finalAuthUrl.includes("prompt=none") ||
-            finalAuthUrl.includes("prompt%3Dnone") ||
-            authUrl.searchParams.get("prompt") === "none"
-          ) {
-            console.error(
-              `[${providerName} Auth] ❌ ERROR: prompt=none is still in the URL!`,
-              {
-                url: finalAuthUrl,
-                hasPromptParam: authUrl.searchParams.has("prompt"),
-                promptValue: authUrl.searchParams.get("prompt"),
+          // Validation checks and final URL preparation
+          let redirectUrl = finalAuthUrl;
+          
+          if (isForgeRockLive) {
+            // For ForgeRock: Ensure prompt=login is set
+            const promptValue = authUrl.searchParams.get("prompt");
+            if (promptValue !== "login") {
+              if (promptValue === "none") {
+                console.error(
+                  `[${providerName} Auth] ❌ ERROR: prompt=none detected! Overriding with prompt=login...`
+                );
+              } else {
+                console.warn(
+                  `[${providerName} Auth] ⚠️ Prompt value is "${promptValue}", setting to "login"...`
+                );
               }
-            );
-            throw new Error(
-              "prompt=none detected in authorization URL - this will prevent login page from showing"
-            );
+              authUrl.searchParams.set("prompt", "login");
+              redirectUrl = authUrl.toString();
+              console.log(
+                `[${providerName} Auth] ✅ Updated URL with prompt=login:`,
+                redirectUrl
+              );
+            } else {
+              console.log(
+                `[${providerName} Auth] ✅ URL verified - prompt=login set. Redirecting to login page...`
+              );
+            }
+          } else {
+            // PingOne: Verify prompt=none is NOT in the URL
+            if (
+              finalAuthUrl.includes("prompt=none") ||
+              finalAuthUrl.includes("prompt%3Dnone") ||
+              authUrl.searchParams.get("prompt") === "none"
+            ) {
+              console.error(
+                `[${providerName} Auth] ❌ ERROR: prompt=none detected! Removing it...`
+              );
+              authUrl.searchParams.delete("prompt");
+              redirectUrl = authUrl.toString();
+              console.log(
+                `[${providerName} Auth] ✅ Updated URL without prompt:`,
+                redirectUrl
+              );
+            } else {
+              console.log(
+                `[${providerName} Auth] ✅ URL verified - no prompt=none. Redirecting...`
+              );
+            }
           }
-
-          console.log(
-            `[${providerName} Auth] ✅ URL verified - no prompt=none. Redirecting to login page...`
-          );
 
           // Perform the redirect using window.location.replace to ensure proper browser redirect
           // This avoids CORS issues as it's a full page navigation, not a fetch request
           // Using replace() prevents back button issues
-          window.location.replace(finalAuthUrl);
+          console.log(
+            `[${providerName} Auth] Redirecting to:`,
+            redirectUrl
+          );
+          window.location.replace(redirectUrl);
           return; // Exit function as redirect is happening
         } catch (urlError) {
           console.error(
@@ -727,11 +1051,11 @@ export const AuthProvider = ({ children }) => {
       setUser(null);
       setEmail("");
 
-      // PingOne handles redirect via logoutRedirectUri, ForgeRock may need manual redirect
-      if (isForgeRockLive) {
-        navigate("/");
-      }
-      // Note: PingOne SDK handles redirect automatically via logoutRedirectUri
+      // After logout, redirect to login page which will trigger SSO auto-login
+      // This ensures user is taken directly to SSO login instead of staying on protected route
+      setTimeout(() => {
+        navigate("/login", { replace: true });
+      }, 100);
     } catch (error) {
       console.error(`[${providerName} Auth] Logout error:`, error);
       console.error(`[${providerName} Auth] Logout error details:`, {
@@ -745,8 +1069,10 @@ export const AuthProvider = ({ children }) => {
       setIsAuthenticated(false);
       setUser(null);
       setEmail("");
-      // Only navigate if logout redirect didn't happen
-      navigate("/");
+      // After logout, redirect to login page which will trigger SSO auto-login
+      setTimeout(() => {
+        navigate("/login", { replace: true });
+      }, 100);
     }
   };
 

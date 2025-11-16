@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from "react";
 import { Navigate, Outlet } from "react-router-dom";
 import { useAuth } from "../context/AuthContext";
-import { UserManager } from "@forgerock/javascript-sdk";
+import { TokenManager, Config } from "@forgerock/javascript-sdk";
 
 const ProtectedRoute = () => {
-  const { isAuthenticated, isLoading } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const [isValidating, setIsValidating] = useState(true);
   const [isValid, setIsValid] = useState(false);
 
@@ -13,23 +13,62 @@ const ProtectedRoute = () => {
       console.log("[ForgeRock ProtectedRoute] Validating access token...", {
         isAuthenticated,
         isLoading,
+        hasUser: !!user,
       });
 
-      if (isAuthenticated) {
+      if (isAuthenticated && user) {
+        // User is authenticated and has user info - consider valid
+        // We skip SDK's UserManager.getCurrentUser() to avoid wrong URL construction
+        console.log(
+          "[ForgeRock ProtectedRoute] User is authenticated with user info - granting access"
+        );
+        setIsValid(true);
+        setIsValidating(false);
+        console.log("[ForgeRock ProtectedRoute] Route access granted");
+        return;
+      }
+
+      if (isAuthenticated && !user) {
+        // Authenticated but no user info - try to validate token manually
         try {
           console.log(
-            "[ForgeRock ProtectedRoute] User is authenticated, validating token..."
+            "[ForgeRock ProtectedRoute] User authenticated but no user info, validating token..."
           );
-          // Validate token by getting current user
-          const userInfo = await UserManager.getCurrentUser();
-          console.log(
-            "[ForgeRock ProtectedRoute] Token validation successful:",
-            {
-              hasUserInfo: !!userInfo,
-              userEmail: userInfo?.email,
+          
+          // Check if tokens exist
+          const tokens = await TokenManager.getTokens({ forceRenew: false });
+          if (!tokens || !tokens.accessToken) {
+            throw new Error("No access token found");
+          }
+          
+          // Try to validate token by fetching userinfo with correct endpoint
+          const config = await Config.get();
+          const userInfoEndpoint = config.serverConfig?.userInfoEndpoint || 
+                                   config.serverConfig?.userinfo_endpoint;
+          
+          if (userInfoEndpoint) {
+            console.log("[ForgeRock ProtectedRoute] Validating token using userinfo endpoint:", userInfoEndpoint);
+            const userInfoResponse = await fetch(userInfoEndpoint, {
+              headers: {
+                'Authorization': `Bearer ${tokens.accessToken}`
+              }
+            });
+            
+            if (userInfoResponse.ok) {
+              const userInfoData = await userInfoResponse.json();
+              console.log("[ForgeRock ProtectedRoute] Token validation successful:", {
+                hasUserInfo: !!userInfoData,
+                userEmail: userInfoData?.email,
+              });
+              setIsValid(true);
+            } else {
+              throw new Error(`Token validation failed: ${userInfoResponse.status}`);
             }
-          );
-          setIsValid(true);
+          } else {
+            // No userinfo endpoint configured, but we have tokens - consider valid
+            console.log("[ForgeRock ProtectedRoute] No userinfo endpoint configured, but tokens exist - granting access");
+            setIsValid(true);
+          }
           console.log("[ForgeRock ProtectedRoute] Route access granted");
         } catch (err) {
           console.error(
@@ -59,7 +98,7 @@ const ProtectedRoute = () => {
     };
 
     validateAccessToken();
-  }, [isAuthenticated, isLoading]);
+  }, [isAuthenticated, isLoading, user]);
 
   if (isLoading || isValidating) {
     console.log(

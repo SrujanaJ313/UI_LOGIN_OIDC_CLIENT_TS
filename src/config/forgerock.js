@@ -11,12 +11,18 @@ const pingOneConfig = {
   },
 };
 
+// Use mock server if REACT_APP_USE_MOCK_SERVER is true
+const useMockServer = process.env.REACT_APP_USE_MOCK_SERVER === "true";
+const forgerockBaseUrl = useMockServer
+  ? "http://localhost:8080/sso" // Mock server
+  : "https://wfcssodev1.nhes.nh.gov/sso"; // Real ForgeRock server
+
 const forgerockOpenAMConfig = {
   clientId: "reactClientPKCE",
   redirectUri: "http://localhost:3000/callback",
   scope: process.env.REACT_APP_FORGEROCK_SCOPE || "openid profile email",
   serverConfig: {
-    baseUrl: "https://wfcssodev1.nhes.nh.gov/sso",
+    baseUrl: forgerockBaseUrl,
     realmPath: "wfcnhes",
     timeout: 30000, // ⭐ IMPORTANT: Changed from 3000
   },
@@ -32,6 +38,10 @@ export const providerName = IS_FORGE_ROCK_LIVE ? "ForgeRock OpenAM" : "PingOne";
 console.log(`[${providerName} Config] Configuration loaded:`, {
   provider: providerName,
   isForgeRockLive: IS_FORGE_ROCK_LIVE,
+  useMockServer:
+    useMockServer && IS_FORGE_ROCK_LIVE
+      ? "YES ⚠️ MOCK SERVER"
+      : "NO (Real Server)",
   clientId: forgerockConfig.clientId,
   redirectUri: forgerockConfig.redirectUri,
   scope: forgerockConfig.scope,
