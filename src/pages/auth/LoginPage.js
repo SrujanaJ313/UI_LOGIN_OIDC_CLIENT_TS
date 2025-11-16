@@ -8,7 +8,7 @@ import { Divider, Stack } from "@mui/material";
 import { useFormik } from "formik";
 import * as Yup from "yup";
 import { useNavigate } from "react-router-dom";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Captcha } from "../../components/captcha";
 import AccountCircleIcon from "@mui/icons-material/AccountCircle";
 import InputAdornment from "@mui/material/InputAdornment";
@@ -18,16 +18,12 @@ import { providerName } from "../../config/forgerock";
 
 export default function LoginPage() {
   const navigate = useNavigate();
-  const { login, isLoading } = useAuth();
+  const { login, isLoading, isAuthenticated } = useAuth();
   const user =
     localStorage.getItem("user") && JSON.parse(localStorage.getItem("user"));
   const [captcha, setCaptcha] = useState(() =>
     Math.random().toString(36).slice(8)
   );
-
-  const getCaptcha = (captchaValue) => {
-    setCaptcha(captchaValue);
-  };
 
   const formik = useFormik({
     initialValues: {
@@ -53,6 +49,40 @@ export default function LoginPage() {
       navigate("/homePage");
     },
   });
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      console.log(
+        `[LoginPage] Not authenticated, immediately redirecting to ForgeRock...`
+      );
+      login().catch((error) => {
+        console.error(`[LoginPage] Error during redirect:`, error);
+      });
+    }
+  }, [isAuthenticated, login]);
+
+  const getCaptcha = (captchaValue) => {
+    setCaptcha(captchaValue);
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <Container component="main" maxWidth="sm">
+        <Box
+          sx={{
+            display: "flex",
+            justifyContent: "center",
+            alignItems: "center",
+            height: "100vh",
+          }}
+        >
+          <div>
+            <p>Redirecting to ForgeRock login...</p>
+          </div>
+        </Box>
+      </Container>
+    );
+  }
 
   return (
     <Container component="main" maxWidth="sm">
@@ -119,11 +149,7 @@ export default function LoginPage() {
               sx: { borderRadius: 30 },
             }}
           />
-          <Captcha
-            formik={formik}
-            captcha={captcha}
-            getCaptcha={getCaptcha}
-          />
+          <Captcha formik={formik} captcha={captcha} getCaptcha={getCaptcha} />
           <Button
             type="submit"
             fullWidth
@@ -190,7 +216,9 @@ export default function LoginPage() {
           }}
           size="small"
           onClick={async () => {
-            console.log(`[LoginPage] Initiating ${providerName} OAuth login...`);
+            console.log(
+              `[LoginPage] Initiating ${providerName} OAuth login...`
+            );
             await login();
           }}
           disabled={isLoading}

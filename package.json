@@ -33,10 +33,7 @@
     "start": "react-scripts start",
     "build": "react-scripts build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject",
-    "mock-server": "cd mock-server && npm start",
-    "mock-server:install": "cd mock-server && npm install",
-    "dev:mock": "npm run mock-server:install && npm run mock-server"
+    "eject": "react-scripts eject"
   },
   "eslintConfig": {
     "extends": [
