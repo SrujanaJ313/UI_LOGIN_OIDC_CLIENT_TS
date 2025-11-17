@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from "react";
 import {
   Config,
-  OAuth2Client,
+  // OAuth2Client,
   TokenManager,
   TokenStorage,
   UserManager,
@@ -338,17 +338,44 @@ export const AuthProvider = ({ children }) => {
             );
 
             // Manually exchange authorization code for tokens
+            // ForgeRock requires Basic Auth for public clients (client_id with empty secret)
+            const encodeBase64 = (str) => {
+              const chars =
+                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+              let result = "";
+              let i = 0;
+              while (i < str.length) {
+                const a = str.charCodeAt(i++);
+                const b = i < str.length ? str.charCodeAt(i++) : 0;
+                const c = i < str.length ? str.charCodeAt(i++) : 0;
+                const bitmap = (a << 16) | (b << 8) | c;
+                result +=
+                  chars.charAt((bitmap >> 18) & 63) +
+                  chars.charAt((bitmap >> 12) & 63) +
+                  (i - 2 < str.length
+                    ? chars.charAt((bitmap >> 6) & 63)
+                    : "=") +
+                  (i - 1 < str.length ? chars.charAt(bitmap & 63) : "=");
+              }
+              return result;
+            };
+
+            const credentials = `${forgerockConfig.clientId}:`;
+            const clientCredentials = encodeBase64(credentials);
+
             const tokenResponse = await fetch(tokenEndpoint, {
               method: "POST",
               headers: {
                 "Content-Type": "application/x-www-form-urlencoded",
+                Authorization: `Basic ${clientCredentials}`,
+                Accept: "application/json",
               },
               body: new URLSearchParams({
                 grant_type: "authorization_code",
                 code: code,
-                redirect_uri: redirectUri,
-                client_id: forgerockConfig.clientId,
+                redirect_uri: config.redirectUri,
                 code_verifier: codeVerifier,
+                code_challenge_method: "S256",
               }),
             });
 
