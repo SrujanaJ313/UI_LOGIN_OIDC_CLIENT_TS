@@ -9,6 +9,7 @@ import {
 } from "@forgerock/javascript-sdk";
 import { useNavigate } from "react-router-dom";
 import forgerockConfig, { providerName } from "../config/forgerock";
+import { encodeBase64 } from "../utils/common";
 
 const AuthContext = createContext();
 
@@ -162,7 +163,7 @@ export const AuthProvider = ({ children }) => {
           forgerockConfig.serverConfig?.realmPath || forgerockConfig.realmPath;
 
         if (baseUrl && realmPath) {
-          let wellknownUrl = `${baseUrl}/oauth2/realms/root/realms/${realmPath}/well-known/openid-configuration`;
+          let wellknownUrl = `${baseUrl}/oauth2/realms/root/realms/${realmPath}/.well-known/openid-configuration`;
           wellknownUrl = wellknownUrl.replace(/([^:]\/)\/+/g, "$1");
 
           try {
@@ -339,27 +340,6 @@ export const AuthProvider = ({ children }) => {
 
             // Manually exchange authorization code for tokens
             // ForgeRock requires Basic Auth for public clients (client_id with empty secret)
-            const encodeBase64 = (str) => {
-              const chars =
-                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-              let result = "";
-              let i = 0;
-              while (i < str.length) {
-                const a = str.charCodeAt(i++);
-                const b = i < str.length ? str.charCodeAt(i++) : 0;
-                const c = i < str.length ? str.charCodeAt(i++) : 0;
-                const bitmap = (a << 16) | (b << 8) | c;
-                result +=
-                  chars.charAt((bitmap >> 18) & 63) +
-                  chars.charAt((bitmap >> 12) & 63) +
-                  (i - 2 < str.length
-                    ? chars.charAt((bitmap >> 6) & 63)
-                    : "=") +
-                  (i - 1 < str.length ? chars.charAt(bitmap & 63) : "=");
-              }
-              return result;
-            };
-
             const credentials = `${forgerockConfig.clientId}:`;
             const clientCredentials = encodeBase64(credentials);
 
@@ -626,7 +606,7 @@ export const AuthProvider = ({ children }) => {
           const baseUrl = config.serverConfig?.baseUrl;
           const realmPath = config.serverConfig?.realmPath;
           if (baseUrl && realmPath) {
-            wellknownUrl = `${baseUrl}/oauth2/realms/root/realms/${realmPath}/well-known/openid-configuration`;
+            wellknownUrl = `${baseUrl}/oauth2/realms/root/realms/${realmPath}/.well-known/openid-configuration`;
           }
         }
 
@@ -661,7 +641,7 @@ export const AuthProvider = ({ children }) => {
           const generateCodeVerifier = () => {
             const array = new Uint8Array(32);
             crypto.getRandomValues(array);
-            return btoa(String.fromCharCode(...array))
+            return encodeBase64(String.fromCharCode(...array))
               .replace(/\+/g, "-")
               .replace(/\//g, "_")
               .replace(/=/g, "");
@@ -671,7 +651,7 @@ export const AuthProvider = ({ children }) => {
             const encoder = new TextEncoder();
             const data = encoder.encode(verifier);
             const digest = await crypto.subtle.digest("SHA-256", data);
-            return btoa(String.fromCharCode(...new Uint8Array(digest)))
+            return encodeBase64(String.fromCharCode(...new Uint8Array(digest)))
               .replace(/\+/g, "-")
               .replace(/\//g, "_")
               .replace(/=/g, "");
