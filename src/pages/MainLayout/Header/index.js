@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import MuiAppBar from "@mui/material/AppBar";
-import { Box, IconButton, Toolbar, Typography, styled } from "@mui/material";
+import { Box, IconButton, Toolbar, Typography, styled, Button } from "@mui/material";
+import { useNavigate, useLocation } from "react-router-dom";
 
 import { AccountCircle } from "@mui/icons-material";
 // import Notifications from "../Notifications";
@@ -26,6 +27,8 @@ const AppBar = styled(MuiAppBar, {
 
 const Header = () => {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
   const [anchorEl, setAnchorEl] = useState(null);
   const handleOpenMenu = (event) => {
     setAnchorEl(event.currentTarget);
@@ -63,10 +66,61 @@ const Header = () => {
             className="!tracking-wider"
             fontWeight={600}
             noWrap
+            sx={{ cursor: "pointer" }}
+            onClick={() => navigate("/")}
           >
             ADJ Dashboard
           </Typography>
           <Box sx={{ flexGrow: 1 }} />
+          <Box
+            sx={{
+              display: { xs: "none", md: "flex" },
+              alignItems: "center",
+              gap: 2,
+              mr: 2,
+            }}
+          >
+            <Button
+              color="inherit"
+              onClick={() => navigate("/")}
+              sx={{
+                textTransform: "none",
+                fontWeight: location.pathname === "/" ? 600 : 400,
+              }}
+            >
+              Services
+            </Button>
+            <Button
+              color="inherit"
+              onClick={() => navigate("/claimassist")}
+              sx={{
+                textTransform: "none",
+                fontWeight: location.pathname === "/claimassist" ? 600 : 400,
+              }}
+            >
+              ClaimAssist
+            </Button>
+            <Button
+              color="inherit"
+              onClick={() => navigate("/jms")}
+              sx={{
+                textTransform: "none",
+                fontWeight: location.pathname === "/jms" ? 600 : 400,
+              }}
+            >
+              JMS
+            </Button>
+            <Button
+              color="inherit"
+              onClick={() => navigate("/information")}
+              sx={{
+                textTransform: "none",
+                fontWeight: location.pathname === "/information" ? 600 : 400,
+              }}
+            >
+              Information
+            </Button>
+          </Box>
           <Box
             sx={{ display: { xs: "none", md: "flex" }, alignItems: "center" }}
           >
@@ -101,6 +155,14 @@ const Header = () => {
           horizontal: "right",
         }}
       >
+        <MenuItem
+          onClick={() => {
+            handleCloseMenu();
+            navigate("/");
+          }}
+        >
+          Home
+        </MenuItem>
         <MenuItem onClick={handleCloseMenu}>Profile</MenuItem>
         <MenuItem onClick={handleCloseMenu}>Settings</MenuItem>
         <MenuItem onClick={handleLogout}>Logout</MenuItem>
